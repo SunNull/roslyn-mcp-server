@@ -1,5 +1,7 @@
 # Roslyn MCP Server
 
+**English** | [简体中文](./README.zh-CN.md)
+
 A .NET 11 MCP (Model Context Protocol) server that exposes **Roslyn compiler analysis** to AI coding agents. Gives any MCP-compatible client (Reasonix, Claude Desktop, Cursor, VS Code Copilot) real-time C# code intelligence — diagnostics, type info, references, code fixes — without running `dotnet build`.
 
 ## Why?
@@ -49,14 +51,14 @@ The agent gets **compiler-grade analysis in real time**, powered by the same Ros
 
 **Linux/macOS:**
 ```bash
-git clone https://github.com/yourname/roslyn-mcp-server.git
+git clone https://github.com/SunNull/roslyn-mcp-server.git
 cd roslyn-mcp-server
 ./install.sh                    # or: ./install.sh /path/to/your/project.sln
 ```
 
 **Windows:**
 ```cmd
-git clone https://github.com/yourname/roslyn-mcp-server.git
+git clone https://github.com/SunNull/roslyn-mcp-server.git
 cd roslyn-mcp-server
 install.bat                     REM or: install.bat C:\path\to\your\project.sln
 ```
