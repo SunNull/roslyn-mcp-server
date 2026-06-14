@@ -1,0 +1,211 @@
+# Reasonix configuration.
+# Resolution order: flag > ./reasonix.toml > ~/AppData/Roaming/reasonix/config.toml > built-in defaults.
+# Secrets come from the environment via api_key_env; never put keys here.
+
+config_version = 2   # schema marker for diagnostics; old versions may ignore it
+default_model = "deepseek/deepseek-v4-flash"
+# language      = "zh"   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG
+
+[network]
+proxy_mode = "auto"   # auto|env|custom|off; auto currently uses env proxy
+# proxy_url  = "socks5://127.0.0.1:7890"   # optional custom override
+# no_proxy   = "localhost,127.0.0.1,.local"   # honored for proxy_mode = "custom"
+
+[network.proxy]
+type = "socks5"   # http|https|socks5|socks5h
+# server = "127.0.0.1"
+# port = 7890
+# username = ""
+# password = "${REASONIX_PROXY_PASSWORD}"   # optional; supports ${VAR} expansion
+
+[agent]
+# system_prompt = """..."""   # omit to use the built-in prompt for this version
+# system_prompt_file = "prompts/system.md"   # overrides system_prompt when set
+max_steps         = 0   # executor tool-call rounds; 0 = no limit
+planner_max_steps = 25   # planner read-only tool-call rounds; 0 = no limit
+temperature       = 0.0
+auto_plan   = "off"   # off|on; off keeps plan mode manual
+reasoning_language = "zh"   # visible reasoning language: auto|zh|en
+# auto_plan_classifier = "deepseek-flash"   # optional; only used for borderline tasks
+soft_compact_ratio  = 0.5   # notice only; keeps cache-first prefix intact
+compact_ratio       = 0.8   # try compacting when prompt reaches this fraction
+compact_force_ratio = 0.9   # force compacting at this high-water mark
+cold_resume_prune   = true   # elide stale tool results when reopening a session past the provider cache window
+# planner_model = "mimo"   # optional: enable two-model collaboration
+# subagent_model = "deepseek-pro"   # optional default for runAs=subagent skills
+# subagent_models = { review = "deepseek-pro", security_review = "deepseek-pro" }   # per-skill overrides
+# subagent_effort = "high"   # optional default effort for subagents
+# subagent_efforts = { review = "max", task = "high" }   # per-tool/skill effort overrides
+# output_style = "explanatory"   # explanatory | learning | concise | custom; empty = default
+
+[[providers]]
+name        = "deepseek-flash"
+kind        = "openai"
+base_url    = "https://api.deepseek.com"
+model       = "deepseek-v4-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+balance_url = "https://api.deepseek.com/user/balance"   # optional; wallet-balance endpoint shown in the status bar
+context_window = 1000000   # tokens; compaction triggers near this limit
+price       = { cache_hit = 0.02, input = 1, output = 2, currency = "¥" }   # per 1M tokens
+
+[[providers]]
+name        = "deepseek-pro"
+kind        = "openai"
+base_url    = "https://api.deepseek.com"
+model       = "deepseek-v4-pro"
+api_key_env = "DEEPSEEK_API_KEY"
+balance_url = "https://api.deepseek.com/user/balance"   # optional; wallet-balance endpoint shown in the status bar
+context_window = 1000000   # tokens; compaction triggers near this limit
+price       = { cache_hit = 0.025, input = 3, output = 6, currency = "¥" }   # per 1M tokens
+
+[[providers]]
+name        = "mimo-pro"
+kind        = "openai"
+base_url    = "https://token-plan-cn.xiaomimimo.com/v1"
+model       = "mimo-v2.5-pro"
+api_key_env = "MIMO_API_KEY"
+context_window = 1000000   # tokens; compaction triggers near this limit
+price       = { cache_hit = 0.025, input = 3, output = 6, currency = "¥" }   # per 1M tokens
+no_proxy    = true   # reach this base_url directly, never via the proxy
+
+[[providers]]
+name        = "mimo-flash"
+kind        = "openai"
+base_url    = "https://token-plan-cn.xiaomimimo.com/v1"
+model       = "mimo-v2.5"
+api_key_env = "MIMO_API_KEY"
+context_window = 1000000   # tokens; compaction triggers near this limit
+price       = { cache_hit = 0.02, input = 1, output = 2, currency = "¥" }   # per 1M tokens
+no_proxy    = true   # reach this base_url directly, never via the proxy
+
+[[providers]]
+name        = "deepseek"
+kind        = "openai"
+base_url    = "https://api.deepseek.com"
+models      = ["deepseek-v4-flash", "deepseek-v4-pro"]
+default     = "deepseek-v4-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+balance_url = "https://api.deepseek.com/user/balance"   # optional; wallet-balance endpoint shown in the status bar
+context_window = 1000000   # tokens; compaction triggers near this limit
+price       = { cache_hit = 0.02, input = 1, output = 2, currency = "¥" }   # per 1M tokens
+
+[[providers]]
+name        = "智普"
+kind        = "anthropic"
+base_url    = "https://open.bigmodel.cn/api/anthropic"
+models      = ["glm-5.1", "glm-5.2"]
+default     = "glm-5.1"
+api_key_env = "CUSTOM_API_KEY"
+
+[tools]
+enabled = []   # empty = all built-in tools
+bash_timeout_seconds = 120   # foreground safety cap; set 0 for no tool-local cap
+
+[codegraph]
+enabled      = true   # built-in MCP server; off by default for first-run sessions
+auto_install = true   # fetch the runtime when CodeGraph is enabled but missing
+# path       = ""   # empty = cache, then PATH, then a bundle beside reasonix
+
+[builtin_mcp]
+time_enabled = true   # built-in Time MCP; off until manually enabled
+context7_enabled = true   # built-in Context7 MCP; off until manually enabled
+
+[lsp]
+enabled = true   # language server tools; servers launch lazily when used
+# [lsp.servers.go]
+# command = "gopls"
+# args = []
+# extensions = [".go"]
+
+[skills]
+# paths = ["~/my-skills", "../shared/skills"]   # extra custom skill roots
+# excluded_paths = ["~/.agents/skills"]   # hide convention roots without deleting folders
+# max_depth = 3   # nested scan depth; set 1 for legacy root-only discovery
+disabled_skills = ["claude-api", "algorithmic-art"]   # hidden from the prompt, slash invocation, and skill tools
+
+[permissions]
+# Per-call gating. mode = writer fallback when no rule matches: ask|allow|deny.
+# Readers always default to allow. Precedence: deny > ask > allow > fallback.
+# Rules are "Tool" or "Tool(specifier)"; e.g. Bash(go test:*), Edit(src/**).
+mode  = "ask"
+# deny = ["Bash(rm -rf*)", "Bash(git push*)"]   # hard-blocked in every mode
+allow = ["Edit"]
+# ask = ["Edit(src/**)"]   # force a prompt even if otherwise allowed
+
+[sandbox]
+# Confine tool blast radius. File-writers (write_file/edit_file/multi_edit/move_file)
+# may only write under workspace_root (empty = current dir) + allow_write.
+# bash = "enforce" (default) jails each command in an OS sandbox (macOS now;
+# graceful fallback elsewhere); "off" disables it. network allows egress.
+# workspace_root = ""            # default: current working directory
+# allow_write = ["/tmp"]          # extra dirs writers may also modify
+bash    = "enforce"
+network = true
+
+[statusline]
+# A custom status line: a command whose first stdout line replaces the built-in
+# data row. It receives {"model","contextUsed","contextWindow","cwd"} as JSON on stdin.
+# command = "my-statusline.sh"
+
+# Bot gateway: multi-channel IM bot for QQ, Feishu/Lark, and WeChat.
+[bot]
+enabled = true
+# model = ""   # empty = default_model
+tool_approval_mode = "ask"   # ask|auto|yolo; yolo skips tool approvals only
+max_steps = 25
+debounce_ms = 1500
+
+[bot.allowlist]
+enabled = false
+allow_all = true
+qq_users = []
+feishu_users = []
+weixin_users = ["o9cq808pPQxJMvSK2C_viZD_MOvw@im.wechat"]
+qq_groups = []
+feishu_groups = []
+weixin_groups = []
+
+[bot.qq]
+enabled = false
+app_id = ""
+app_secret_env = "QQ_BOT_APP_SECRET"
+sandbox = false
+
+[bot.feishu]
+enabled = false
+app_id = ""
+domain = "feishu"
+app_secret_env = "FEISHU_BOT_APP_SECRET"
+verification_token = ""
+mode = "webhook"
+webhook_port = 8080
+require_mention = true
+
+[bot.weixin]
+enabled = false
+account_id = "default"
+token_env = "WEIXIN_BOT_TOKEN"
+api_base = "https://ilinkai.weixin.qq.com"
+
+[[bot.connections]]
+id = "weixin-weixin"
+provider = "weixin"
+domain = "weixin"
+label = "微信"
+enabled = true
+status = "connected"
+model = "deepseek/deepseek-v4-pro"
+tool_approval_mode = "yolo"
+workspace_root = "D:\\Programe"
+created_at = "2026-06-13T11:23:01Z"
+updated_at = "2026-06-13T11:23:42Z"
+credential = { account_id = "563351691ac7@im.bot", token_env = "WEIXIN_BOT_TOKEN" }
+session_mappings = [{ remote_id = "o9cq808pPQxJMvSK2C_viZD_MOvw@im.wechat", scope = "project", session_id = "", updated_at = "2026-06-13T11:23:42Z", workspace_root = "D:\\Programe" }]
+
+# External MCP servers. type: "stdio" (default, a subprocess) | "http" | "sse".
+# ${VAR} / ${VAR:-default} are expanded from the environment in command/args/env/url/headers.
+
+[[plugins]]
+name    = "roslyn"
+command = "dotnet"
+args    = ["exec", "D:\\Programe\\AIPrograme\\Reasonix Desk\\roslyn-mcp-server\\src\\RoslynMcpServer\\bin\\Debug\\net11.0\\roslyn-mcp-server.dll"]
