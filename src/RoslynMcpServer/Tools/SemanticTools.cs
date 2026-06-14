@@ -300,7 +300,7 @@ public static class SemanticTools
 
         // Try to find the symbol text on the line; fall back to column 0.
         var lineStr = sourceText.ToString(new TextSpan(textLine.Start, textLine.Span.Length));
-        var col = lineStr.IndexOf(symbolOrColumn, StringComparison.Ordinal);
+        var col = lineStr.IndexOf(symbolOrColumn, StringComparison.OrdinalIgnoreCase);
         var absPos = col >= 0 ? textLine.Start + col : textLine.Start;
 
         return (doc, absPos);

@@ -145,12 +145,7 @@ if [ -z "$REASONIX" ]; then
   echo "  或: reasonix mcp add roslyn \"$EXE\""
 else
   "$REASONIX" mcp remove roslyn 2>/dev/null || true
-
-  if [ -n "$WORKSPACE" ]; then
-    "$REASONIX" mcp add roslyn "$EXE" --workspace "$WORKSPACE"
-  else
-    "$REASONIX" mcp add roslyn "$EXE"
-  fi
+  "$REASONIX" mcp add roslyn "$EXE"
   echo "  已注册到 Reasonix [OK]"
 fi
 

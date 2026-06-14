@@ -9,7 +9,6 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
     permissions:
       contents: write  # gh release upload 权限
 
@@ -31,29 +30,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 11
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'  # CI 用稳定版构建（net11 preview 也兼容）
+          dotnet-version: '11.0.100-preview.5.26302.115'
 
-      - name: Publish (self-contained)
+      - name: Publish (self-contained, single-file)
         run: |
           dotnet publish src/RoslynMcpServer -c Release \
             -r ${{ matrix.rid }} \
             --self-contained true \
-            -p:PublishSingleFile=true \
+            -p:PublishSingleFile=false \
             -p:PublishTrimmed=false \
             -o ./publish
 
-      - name: Create archive
-        shell: bash
+      - name: Create archive (Unix)
+        if: matrix.archive == 'tar.gz'
         run: |
           cd ./publish
-          if [ "${{ matrix.archive }}" = "zip" ]; then
-            7z a -tzip ../roslyn-mcp-server-${{ matrix.rid }}.zip .
-          else
-            tar -czf ../roslyn-mcp-server-${{ matrix.rid }}.tar.gz .
-          fi
+          tar -czf ../roslyn-mcp-server-${{ matrix.rid }}.tar.gz .
+
+      - name: Create archive (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ./publish/* -DestinationPath ../roslyn-mcp-server-${{ matrix.rid }}.zip
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

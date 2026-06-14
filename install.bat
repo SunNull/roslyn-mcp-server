@@ -126,12 +126,7 @@ if not defined REASONIX (
     echo   或: reasonix mcp add roslyn "%EXE%"
 ) else (
     !REASONIX! mcp remove roslyn >nul 2>&1
-
-    if defined WORKSPACE (
-        !REASONIX! mcp add roslyn "%EXE%" --workspace "%WORKSPACE%"
-    ) else (
-        !REASONIX! mcp add roslyn "%EXE%"
-    )
+    !REASONIX! mcp add roslyn "%EXE%"
     echo   已注册到 Reasonix [OK]
 )
 

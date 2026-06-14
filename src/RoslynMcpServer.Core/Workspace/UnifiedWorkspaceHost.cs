@@ -243,14 +243,22 @@ public sealed class UnifiedWorkspaceHost : IWorkspaceHost, IDisposable
             if (_msbuildRegistered)
                 return;
 
-            var instances = MSBuildLocator.QueryVisualStudioInstances().ToList();
-            var instance = instances.OrderByDescending(i => i.Version).FirstOrDefault();
-            if (instance != null)
-                MSBuildLocator.RegisterInstance(instance);
-            else
-                MSBuildLocator.RegisterDefaults();
+            try
+            {
+                var instances = MSBuildLocator.QueryVisualStudioInstances().ToList();
+                var instance = instances.OrderByDescending(i => i.Version).FirstOrDefault();
+                if (instance != null)
+                    MSBuildLocator.RegisterInstance(instance);
+                else
+                    MSBuildLocator.RegisterDefaults();
 
-            _msbuildRegistered = true;
+                _msbuildRegistered = true;
+            }
+            catch (InvalidOperationException)
+            {
+                // Already registered by another component — that's fine.
+                _msbuildRegistered = true;
+            }
         }
     }
 
