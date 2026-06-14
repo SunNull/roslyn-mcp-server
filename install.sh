@@ -1,32 +1,37 @@
 #!/usr/bin/env bash
-# 一键安装 Roslyn MCP Server 到 Reasonix
+# ============================================================
+#   Roslyn MCP Server — Linux/macOS 一键安装
 #
-# 用法：
-#   ./install.sh                    # 编译 + 注册到 Reasonix
-#   ./install.sh /path/to/project   # 编译 + 注册 + 指定 workspace
-#
-# 前提：已安装 .NET 11 SDK 和 Reasonix
+#   用法：
+#     ./install.sh                     编译 + 注册到 Reasonix
+#     ./install.sh /path/to/proj.sln   编译 + 注册 + 加载项目
+# ============================================================
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DLL_NAME="roslyn-mcp-server.dll"
 
-echo "╔══════════════════════════════════════════╗"
-echo "║   Roslyn MCP Server — 一键安装           ║"
-echo "╚══════════════════════════════════════════╝"
+echo ""
+echo "============================================"
+echo "  Roslyn MCP Server — 安装"
+echo "============================================"
 echo ""
 
 # ── 1. 检查前提 ──────────────────────────────────────────────────────────
-echo "▶ 检查环境..."
+echo "[1/3] 检查环境..."
 
-if ! command -v dotnet &>/dev/null; then
-    echo "✗ 未找到 dotnet。请先安装 .NET SDK: https://dotnet.microsoft.com/download"
+if ! command -v git &>/dev/null; then
+    echo "  [X] 未找到 git。请先安装 Git。"
     exit 1
 fi
+echo "  git [OK]"
 
-DOTNET_VERSION=$(dotnet --version 2>/dev/null || echo "0")
-echo "  .NET SDK: $DOTNET_VERSION ✓"
+if ! command -v dotnet &>/dev/null; then
+    echo "  [X] 未找到 dotnet。请先安装 .NET SDK: https://dotnet.microsoft.com/download"
+    exit 1
+fi
+DOTNET_VERSION=$(dotnet --version 2>/dev/null || echo "?")
+echo "  .NET SDK: $DOTNET_VERSION [OK]"
 
 REASONIX=""
 for cmd in reasonix reasonix.exe; do
@@ -36,62 +41,57 @@ for cmd in reasonix reasonix.exe; do
     fi
 done
 if [ -z "$REASONIX" ]; then
-    echo "  Reasonix: 未找到（可选，跳过自动注册）"
+    echo "  Reasonix: 未找到（将输出手动配置指引）"
 else
-    echo "  Reasonix: $REASONIX ✓"
+    echo "  Reasonix: $REASONIX [OK]"
 fi
 
 # ── 2. 编译 ──────────────────────────────────────────────────────────────
 echo ""
-echo "▶ 编译 Roslyn MCP Server..."
+echo "[2/3] 编译 Roslyn MCP Server..."
 cd "$SCRIPT_DIR"
 dotnet build RoslynMcpServer.sln -c Release --nologo -clp:ErrorsOnly
 
-DLL_PATH="$SCRIPT_DIR/src/RoslynMcpServer/bin/Release/net11.0/$DLL_NAME"
-
-if [ ! -f "$DLL_PATH" ]; then
-    echo "✗ 编译失败：$DLL_PATH 不存在"
-    exit 1
-fi
-
-echo "  产物: $DLL_PATH ✓"
+# 用正斜杠构建路径（TOML 安全）
+DLL_PATH="$SCRIPT_DIR/src/RoslynMcpServer/bin/Release/net11.0/roslyn-mcp-server.dll"
+echo "  产物: $DLL_PATH [OK]"
 
 # ── 3. 注册到 Reasonix ──────────────────────────────────────────────────
 if [ -n "$REASONIX" ]; then
     echo ""
-    echo "▶ 注册到 Reasonix..."
+    echo "[3/3] 注册到 Reasonix..."
 
     # 先移除旧的（忽略错误）
     "$REASONIX" mcp remove roslyn 2>/dev/null || true
 
-    # 构造参数
     if [ -n "$1" ]; then
         # 带 workspace 参数
         "$REASONIX" mcp add roslyn dotnet exec "$DLL_PATH" --workspace "$1"
         echo "  workspace: $1"
     else
-        # 不带 workspace（standalone 模式）
+        # standalone 模式
         "$REASONIX" mcp add roslyn dotnet exec "$DLL_PATH"
     fi
-
-    echo ""
-    echo "✓ 安装完成！"
-    echo ""
-    echo "  验证: $REASONIX mcp list"
-    echo "  使用: 启动 reasonix chat，模型即可调用 roslyn_diagnostics 等工具"
 else
     echo ""
-    echo "✓ 编译完成！"
+    echo "[3/3] Reasonix 未安装 — 手动配置指引:"
     echo ""
-    echo "  手动注册到 Reasonix（复制到 reasonix.toml）："
+    echo "  方式 1: reasonix mcp add roslyn dotnet exec \"$DLL_PATH\""
+    echo ""
+    echo "  方式 2: 编辑 ~/.config/reasonix/config.toml:"
     echo ""
     echo "  [[plugins]]"
     echo "  name    = \"roslyn\""
     echo "  command = \"dotnet\""
     echo "  args    = [\"exec\", \"$DLL_PATH\"]"
+    echo ""
+    echo "  方式 3: 复制仓库中的 .mcp.json 到你的项目根目录"
 fi
 
 echo ""
-echo "╔══════════════════════════════════════════╗"
-echo "║   安装完成！16 个 Roslyn 工具已就绪       ║"
-echo "╚══════════════════════════════════════════╝"
+echo "============================================"
+echo "  安装完成！16 个 Roslyn 工具已就绪"
+echo "============================================"
+echo ""
+echo "  验证: reasonix mcp list"
+echo ""

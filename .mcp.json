@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "roslyn": {
+      "command": "dotnet",
+      "args": ["exec", "src/RoslynMcpServer/bin/Release/net11.0/roslyn-mcp-server.dll"],
+      "build": {
+        "command": "dotnet",
+        "args": ["build", "-c", "Release"]
+      }
+    }
+  }
+}
