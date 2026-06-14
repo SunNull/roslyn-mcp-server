@@ -7,13 +7,15 @@ using ModelContextProtocol.Server;
 using RoslynMcpServer.Core.Workspace;
 
 // ── entry point ──────────────────────────────────────────────────────────────
-// Parse --workspace <path> to auto-load a .sln/.csproj on startup. When
-// provided, MSBuildWorkspaceHost is used; otherwise the lightweight
-// AdhocWorkspaceHost handles single-file queries. The watcher keeps the
-// compilation fresh for real-time feedback.
+// The server uses UnifiedWorkspaceHost, which transparently handles both
+// project-grade analysis (MSBuildWorkspace) and standalone-file analysis
+// (adhoc). The AI doesn't need to pick a mode — it just queries files.
+//
+// On startup we auto-detect a .sln/.csproj in the current directory. If found,
+// full semantic analysis is active from the start. If not, the server runs in
+// standalone mode until the AI loads a project (roslyn_load_project) or a .cs
+// file query triggers upward auto-discovery.
 // ─────────────────────────────────────────────────────────────────────────────
-
-var workspacePath = ParseWorkspaceArg(args);
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -22,32 +24,12 @@ builder.Logging.AddConsole(options =>
     options.LogToStandardErrorThreshold = LogLevel.Warning;
 });
 
-if (workspacePath != null)
-{
-    var msbuildHost = new MSBuildWorkspaceHost();
-    try
-    {
-        await msbuildHost.LoadAsync(workspacePath);
-        Console.Error.WriteLine($"[roslyn-mcp] Loaded workspace: {workspacePath}");
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"[roslyn-mcp] Failed to load workspace '{workspacePath}': {ex.Message}");
-    }
+var host = new UnifiedWorkspaceHost();
 
-    builder.Services.AddSingleton<IWorkspaceHost>(msbuildHost);
+// Auto-detect a .sln/.csproj in the working directory (non-blocking).
+_ = AutoDetectProjectAsync(host);
 
-    var watcher = new WorkspaceWatcher(msbuildHost, Path.GetDirectoryName(workspacePath) ?? workspacePath);
-    watcher.Start();
-    Console.Error.WriteLine($"[roslyn-mcp] Watching for changes in: {Path.GetDirectoryName(workspacePath) ?? workspacePath}");
-
-    AppDomain.CurrentDomain.ProcessExit += (_, _) => watcher.Dispose();
-}
-else
-{
-    builder.Services.AddSingleton<IWorkspaceHost, AdhocWorkspaceHost>();
-    Console.Error.WriteLine("[roslyn-mcp] Running in standalone mode (no workspace loaded).");
-}
+builder.Services.AddSingleton<IWorkspaceHost>(host);
 
 builder.Services
     .AddMcpServer()
@@ -56,14 +38,35 @@ builder.Services
 
 await builder.Build().RunAsync();
 
-// ── local functions ──────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 
-static string? ParseWorkspaceArg(string[] args)
+static async Task AutoDetectProjectAsync(UnifiedWorkspaceHost host)
 {
-    for (var i = 0; i < args.Length - 1; i++)
+    try
     {
-        if (args[i] is "--workspace" or "-w")
-            return args[i + 1];
+        var cwd = Environment.CurrentDirectory;
+
+        // Search for .sln first (multi-project), then .csproj.
+        var sln = Directory.GetFiles(cwd, "*.sln", SearchOption.TopDirectoryOnly);
+        if (sln.Length > 0)
+        {
+            await host.LoadProjectAsync(sln[0]);
+            Console.Error.WriteLine($"[roslyn-mcp] Auto-loaded solution: {sln[0]}");
+            return;
+        }
+
+        var csproj = Directory.GetFiles(cwd, "*.csproj", SearchOption.TopDirectoryOnly);
+        if (csproj.Length > 0)
+        {
+            await host.LoadProjectAsync(csproj[0]);
+            Console.Error.WriteLine($"[roslyn-mcp] Auto-loaded project: {csproj[0]}");
+            return;
+        }
+
+        Console.Error.WriteLine("[roslyn-mcp] No .sln/.csproj in cwd — starting in standalone mode.");
     }
-    return null;
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[roslyn-mcp] Auto-detect failed: {ex.Message} — starting in standalone mode.");
+    }
 }

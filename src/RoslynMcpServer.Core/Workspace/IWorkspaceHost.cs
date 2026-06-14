@@ -5,58 +5,57 @@ namespace RoslynMcpServer.Core.Workspace;
 
 /// <summary>
 /// Abstracts how a Roslyn <see cref="Workspace"/> and its compilations are
-/// obtained. The skeleton stage used <see cref="AdhocWorkspaceHost"/> (manual
-/// references); production swaps in <see cref="MSBuildWorkspaceHost"/> which
-/// loads .sln/.csproj and resolves all NuGet/project references via MSBuild.
+/// obtained. The unified host (<see cref="UnifiedWorkspaceHost"/>) handles
+/// both project-level (MSBuildWorkspace) and file-level (Adhoc) analysis
+/// automatically — callers just pass a path and the host figures out whether
+/// it's part of a loaded project or a standalone file.
 /// </summary>
 public interface IWorkspaceHost
 {
-    /// <summary>
-    /// The underlying Roslyn workspace, or null when the host is file-only
-    /// (AdhocWorkspaceHost). Tools that need Solution/Document-level APIs
-    /// (find_references, code_fixes) use this; simpler tools use
-    /// <see cref="GetCompilationAsync"/>.
-    /// </summary>
+    /// <summary>The underlying Roslyn workspace (null in pure adhoc mode).</summary>
     Microsoft.CodeAnalysis.Workspace? Workspace { get; }
 
-    /// <summary>
-    /// The currently loaded solution, or null if only a single project/file
-    /// is loaded. null for AdhocWorkspaceHost.
-    /// </summary>
+    /// <summary>The currently loaded solution (null until a project is loaded).</summary>
     Solution? CurrentSolution { get; }
 
-    /// <summary>
-    /// True when the host has finished its initial project load. False during
-    /// the async MSBuild restore/load. Callers should check this and surface
-    /// a "still loading" message if false.
-    /// </summary>
-    bool IsReady { get; }
+    /// <summary>True when a project/solution is loaded and ready for queries.</summary>
+    bool IsProjectLoaded { get; }
 
     /// <summary>
-    /// Returns a Roslyn compilation for the given path. The path may be a .cs
-    /// file, a .csproj, a .sln, or a directory. For a .cs file inside a loaded
-    /// project, returns that project's compilation. For a standalone file,
-    /// returns an ad-hoc compilation.
+    /// Returns a compilation for the given path. Auto-resolves: if the path is
+    /// a .cs file inside a loaded project, returns that project's compilation
+    /// (with all NuGet references resolved). If it's a standalone .cs file,
+    /// returns an adhoc compilation with base references. If it's a .csproj or
+    /// .sln, loads it first.
     /// </summary>
     Task<Compilation?> GetCompilationAsync(string path, CancellationToken ct = default);
 
     /// <summary>
-    /// Resolves a .cs file path to its containing Roslyn <see cref="Document"/>,
-    /// or null if the file is not part of a loaded project. Tools like hover,
-    /// goto_definition, and find_references need a Document to get a
-    /// SemanticModel.
+    /// Resolves a .cs file to its Roslyn Document in a loaded project, or null
+    /// if the file is standalone. Semantic tools (hover, goto_def, references)
+    /// need a Document for the real SemanticModel.
     /// </summary>
     Task<Document?> GetDocumentAsync(string filePath, CancellationToken ct = default);
 
-    /// <summary>
-    /// Returns all projects in the loaded solution, or a single-project list.
-    /// Empty when the host is file-only.
-    /// </summary>
+    /// <summary>All projects in the loaded solution (empty if only adhoc).</summary>
     IReadOnlyList<Project> GetProjects();
 
     /// <summary>
-    /// Reloads the workspace from disk. Called by the watcher when files change
-    /// or by an explicit "refresh" tool call.
+    /// Returns the path of the currently loaded .sln/.csproj, or null if none.
+    /// Used by the watcher to know what to reload.
     /// </summary>
-    Task ReloadAsync(CancellationToken ct = default);
+    string? LoadedProjectPath { get; }
+
+    /// <summary>
+    /// automatically on first project query, or explicitly by the AI via the
+    /// roslyn_load_project tool. Subsequent calls reload.
+    /// </summary>
+    Task LoadProjectAsync(string projectPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Auto-discovers and loads a .sln/.csproj by searching upward from a .cs
+    /// file's directory (like git finding .git). Returns true if a project was
+    /// found and loaded.
+    /// </summary>
+    Task<bool> TryAutoLoadForFileAsync(string csFilePath, CancellationToken ct = default);
 }

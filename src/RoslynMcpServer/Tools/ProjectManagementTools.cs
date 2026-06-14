@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Text;
 
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 using ModelContextProtocol.Server;
 
@@ -11,29 +10,87 @@ using RoslynMcpServer.Core.Workspace;
 namespace RoslynMcpServer.Tools;
 
 /// <summary>
-/// Project engineering tools — for understanding solution/project structure,
-/// references, packages, and overall compilation health. These power "what
-/// projects are in this solution", "what packages does X depend on", and
-/// "is the project compiling right now" queries.
+/// Project management tools — lets the AI explicitly load/reload a .sln or
+/// .csproj, or check what's currently loaded. Normally the host auto-discovers
+/// the project, but these give the AI control when needed (e.g. switching
+/// between solutions, forcing a reload after package changes).
 /// </summary>
 [McpServerToolType]
-public static class ProjectTools
+public static class ProjectManagementTools
 {
+    // ── roslyn_load_project ──────────────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_load_project")]
+    [Description(
+        "Load a .sln or .csproj so all subsequent queries get full semantic analysis " +
+        "(NuGet references, cross-project navigation, real type resolution). By default " +
+        "the server auto-discovers the nearest .sln/.csproj from any .cs file, so you " +
+        "usually don't need this. Use it when: (a) you want to switch to a different " +
+        "project, or (b) you added a new NuGet package and need a full reload.")]
+    public static async Task<string> LoadProject(
+        IWorkspaceHost host,
+        [Description("Path to a .sln or .csproj file")] string path,
+        CancellationToken ct = default)
+    {
+        var abs = Path.GetFullPath(path);
+        if (!File.Exists(abs))
+            return $"Error: file not found: {abs}";
+
+        var ext = Path.GetExtension(abs);
+        if (ext != ".sln" && ext != ".csproj")
+            return $"Error: expected .sln or .csproj, got: {abs}";
+
+        try
+        {
+            await host.LoadProjectAsync(abs, ct);
+
+            var projects = host.GetProjects();
+            var sb = new StringBuilder();
+            sb.AppendLine($"Loaded: {Path.GetFileName(abs)}");
+            sb.AppendLine($"Projects: {projects.Count}");
+
+            foreach (var p in projects)
+            {
+                sb.AppendLine($"  [{p.Name}] {p.Language} — {p.DocumentIds.Count} docs, {p.MetadataReferences.Count} refs");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Full semantic analysis is now active — hover, find_references,");
+            sb.AppendLine("goto_definition, and code_fixes will resolve NuGet types correctly.");
+
+            return sb.ToString().TrimEnd();
+        }
+        catch (Exception ex)
+        {
+            return $"Error loading project: {ex.Message}";
+        }
+    }
+
     // ── roslyn_workspace_info ────────────────────────────────────────────────
     [McpServerTool(Name = "roslyn_workspace_info")]
     [Description(
-        "Get an overview of the loaded workspace: solution/projects, their target " +
-        "frameworks, output types, and document counts. Run this first when you " +
-        "need to understand the project structure.")]
+        "Report the current workspace status: is a project loaded, which projects, " +
+        "document/reference counts. Run this first when you need to understand the " +
+        "project structure or check if full semantic analysis is active.")]
     public static async Task<string> WorkspaceInfo(
         IWorkspaceHost host,
         CancellationToken ct = default)
     {
-        var solution = host.CurrentSolution;
-        if (solution == null)
-            return "No solution/project loaded. Use the --workspace startup option to load a .sln or .csproj.";
-
         var sb = new StringBuilder();
+
+        if (!host.IsProjectLoaded)
+        {
+            sb.AppendLine("Status: standalone mode (no project loaded)");
+            sb.AppendLine();
+            sb.AppendLine("Queries on .cs files use adhoc compilation (base BCL refs only).");
+            sb.AppendLine("NuGet types and cross-project references won't resolve.");
+            sb.AppendLine();
+            sb.AppendLine("To enable full analysis, call roslyn_load_project with a .sln/.csproj,");
+            sb.AppendLine("or just query a .cs file — the server auto-discovers its project.");
+            return sb.ToString();
+        }
+
+        var solution = host.CurrentSolution!;
+        sb.AppendLine($"Status: project loaded (full semantic analysis active)");
         sb.AppendLine($"Solution: {Path.GetFileName(solution.FilePath ?? "(unsaved)")}");
         sb.AppendLine($"Projects: {solution.Projects.Count()}");
         sb.AppendLine();
@@ -41,7 +98,6 @@ public static class ProjectTools
         foreach (var project in solution.Projects)
         {
             sb.AppendLine($"  [{project.Name}]");
-            sb.AppendLine($"    File: {project.FilePath ?? "(none)"}");
             sb.AppendLine($"    Language: {project.Language}");
             sb.AppendLine($"    OutputType: {project.CompilationOptions?.OutputKind}");
             sb.AppendLine($"    AssemblyName: {project.AssemblyName}");
@@ -56,8 +112,8 @@ public static class ProjectTools
     // ── roslyn_project_references ────────────────────────────────────────────
     [McpServerTool(Name = "roslyn_project_references")]
     [Description(
-        "List project-to-project references (which other projects this one depends " +
-        "on) for a given project. Give the project name or .csproj path.")]
+        "List project-to-project references and assembly (DLL/NuGet) references " +
+        "for a project. Give the project name or .csproj path.")]
     public static async Task<string> ProjectReferences(
         IWorkspaceHost host,
         [Description("Project name or .csproj file path")] string project,
@@ -65,7 +121,7 @@ public static class ProjectTools
     {
         var proj = FindProject(host, project);
         if (proj == null)
-            return $"Project '{project}' not found in the loaded solution.";
+            return $"Project '{project}' not found. Call roslyn_load_project first.";
 
         var sb = new StringBuilder();
         sb.AppendLine($"Project references for [{proj.Name}]:");
@@ -73,20 +129,17 @@ public static class ProjectTools
         foreach (var pref in proj.ProjectReferences)
         {
             var refProj = proj.Solution.GetProject(pref.ProjectId);
-            sb.AppendLine($"  → {refProj?.Name ?? "(unknown)"} ({refProj?.FilePath ?? "?"})");
+            sb.AppendLine($"  -> {refProj?.Name ?? "(unknown)"}");
         }
 
-        // Also list assembly (metadata) references — the DLLs and NuGet packages.
         sb.AppendLine();
         sb.AppendLine($"Assembly references ({proj.MetadataReferences.Count}):");
         foreach (var mr in proj.MetadataReferences.Take(50))
         {
-            var display = mr switch
-            {
-                PortableExecutableReference pe => Path.GetFileName(pe.FilePath ?? "?"),
-                _ => mr.GetType().Name
-            };
-            sb.AppendLine($"  • {display}");
+            var display = mr is Microsoft.CodeAnalysis.PortableExecutableReference pe
+                ? Path.GetFileName(pe.FilePath ?? "?")
+                : mr.GetType().Name;
+            sb.AppendLine($"  - {display}");
         }
 
         return sb.ToString().TrimEnd();
@@ -95,8 +148,7 @@ public static class ProjectTools
     // ── roslyn_nuget_packages ────────────────────────────────────────────────
     [McpServerTool(Name = "roslyn_nuget_packages")]
     [Description(
-        "List NuGet packages referenced by a project, derived from its metadata " +
-        "references. Give the project name or .csproj path.")]
+        "List NuGet packages referenced by a project. Give the project name or .csproj path.")]
     public static async Task<string> NuGetPackages(
         IWorkspaceHost host,
         [Description("Project name or .csproj file path")] string project,
@@ -104,27 +156,22 @@ public static class ProjectTools
     {
         var proj = FindProject(host, project);
         if (proj == null)
-            return $"Project '{project}' not found in the loaded solution.";
+            return $"Project '{project}' not found. Call roslyn_load_project first.";
 
-        // NuGet packages show up as metadata references whose paths contain
-        // the NuGet package cache directory structure.
-        var packages = new List<(string Name, string Path)>();
+        var packages = new List<string>();
 
         foreach (var mr in proj.MetadataReferences)
         {
-            if (mr is not PortableExecutableReference pe || string.IsNullOrEmpty(pe.FilePath))
+            if (mr is not Microsoft.CodeAnalysis.PortableExecutableReference pe ||
+                string.IsNullOrEmpty(pe.FilePath))
                 continue;
 
-            // NuGet packages live under ~/.nuget/packages/<name>/<version>/...
             var idx = pe.FilePath.IndexOf(".nuget", StringComparison.OrdinalIgnoreCase);
             if (idx < 0)
                 idx = pe.FilePath.IndexOf("packages", StringComparison.OrdinalIgnoreCase);
 
             if (idx >= 0)
-            {
-                var name = Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(pe.FilePath))) ?? "?";
-                packages.Add((name, pe.FilePath));
-            }
+                packages.Add(Path.GetFileName(Path.GetDirectoryName(pe.FilePath) ?? "?"));
         }
 
         if (packages.Count == 0)
@@ -132,25 +179,8 @@ public static class ProjectTools
 
         var sb = new StringBuilder();
         sb.AppendLine($"NuGet packages for [{proj.Name}] ({packages.Count}):");
-
-        foreach (var pkg in packages.DistinctBy(p => p.Name).OrderBy(p => p.Name))
-        {
-            // Try to extract version from the path.
-            var version = "?";
-            var parts = pkg.Path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-            for (var i = 0; i < parts.Length - 1; i++)
-            {
-                if (parts[i].Equals("packages", StringComparison.OrdinalIgnoreCase) ||
-                    parts[i].Equals(".nuget", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (i + 2 < parts.Length)
-                        version = parts[i + 2];
-                    break;
-                }
-            }
-
-            sb.AppendLine($"  • {pkg.Name} (v{version})");
-        }
+        foreach (var pkg in packages.Distinct().OrderBy(p => p))
+            sb.AppendLine($"  - {pkg}");
 
         return sb.ToString().TrimEnd();
     }
@@ -167,7 +197,7 @@ public static class ProjectTools
     {
         var proj = FindProject(host, project);
         if (proj == null)
-            return $"Project '{project}' not found in the loaded solution.";
+            return $"Project '{project}' not found. Call roslyn_load_project first.";
 
         var compilation = await proj.GetCompilationAsync(ct);
         if (compilation == null)
@@ -189,8 +219,7 @@ public static class ProjectTools
             foreach (var e in errors.Take(10))
             {
                 var loc = e.Location.GetLineSpan();
-                var f = loc.Path ?? "?";
-                sb.AppendLine($"  {Path.GetFileName(f)}:{loc.StartLinePosition.Line + 1} [{e.Id}] {e.GetMessage()}");
+                sb.AppendLine($"  {Path.GetFileName(loc.Path ?? "?")}:{loc.StartLinePosition.Line + 1} [{e.Id}] {e.GetMessage()}");
             }
         }
 
@@ -201,16 +230,14 @@ public static class ProjectTools
     {
         var projects = host.GetProjects();
 
-        // Try exact name match first.
         var proj = projects.FirstOrDefault(p =>
             string.Equals(p.Name, nameOrPath, StringComparison.OrdinalIgnoreCase));
 
-        // Try file path match.
         proj ??= projects.FirstOrDefault(p =>
-            string.Equals(p.FilePath, nameOrPath, StringComparison.OrdinalIgnoreCase) ||
-            (p.FilePath != null && string.Equals(Path.GetFileName(p.FilePath), nameOrPath, StringComparison.OrdinalIgnoreCase)));
+            p.FilePath != null &&
+            (string.Equals(p.FilePath, nameOrPath, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(Path.GetFileName(p.FilePath), nameOrPath, StringComparison.OrdinalIgnoreCase)));
 
-        // Try partial contains.
         proj ??= projects.FirstOrDefault(p =>
             p.Name.Contains(nameOrPath, StringComparison.OrdinalIgnoreCase));
 

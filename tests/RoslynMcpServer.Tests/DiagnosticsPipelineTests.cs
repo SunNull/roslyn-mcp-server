@@ -11,7 +11,7 @@ using Xunit;
 namespace RoslynMcpServer.Tests;
 
 /// <summary>
-/// Verifies the AdhocWorkspaceHost + DiagnosticAnalyzer pipeline without going
+/// Verifies the UnifiedWorkspaceHost + DiagnosticAnalyzer pipeline without going
 /// through MCP. These are the skeleton stage's smoke tests: a known-broken .cs
 /// file must surface diagnostics with the right Id and location.
 /// </summary>
@@ -20,7 +20,7 @@ public class DiagnosticsPipelineTests
     [Fact]
     public async Task File_With_Syntax_Error_Produces_Diagnostic()
     {
-        var host = new AdhocWorkspaceHost();
+        var host = new UnifiedWorkspaceHost();
         var broken = Path.Combine(Path.GetTempPath(), $"roslyn_mcp_test_{Guid.NewGuid():N}.cs");
         await File.WriteAllTextAsync(broken, """
             class Broken {
@@ -48,7 +48,7 @@ public class DiagnosticsPipelineTests
     [Fact]
     public async Task Valid_File_Produces_No_Errors()
     {
-        var host = new AdhocWorkspaceHost();
+        var host = new UnifiedWorkspaceHost();
         var valid = Path.Combine(Path.GetTempPath(), $"roslyn_mcp_test_{Guid.NewGuid():N}.cs");
         await File.WriteAllTextAsync(valid, """
             using System;
@@ -79,7 +79,7 @@ public class DiagnosticsPipelineTests
     [Fact]
     public async Task Missing_Type_Reference_Surfaces_As_Error()
     {
-        var host = new AdhocWorkspaceHost();
+        var host = new UnifiedWorkspaceHost();
         var file = Path.Combine(Path.GetTempPath(), $"roslyn_mcp_test_{Guid.NewGuid():N}.cs");
         await File.WriteAllTextAsync(file, """
             class C {

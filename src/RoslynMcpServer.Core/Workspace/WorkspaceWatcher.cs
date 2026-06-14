@@ -106,13 +106,11 @@ public sealed class WorkspaceWatcher : IDisposable
                 else
                     cts.Dispose();
 
-                if (_host is MSBuildWorkspaceHost msbuildHost)
+                // Reload whatever project was loaded. The host knows its own path.
+                var loadedPath = _host.LoadedProjectPath;
+                if (!string.IsNullOrEmpty(loadedPath))
                 {
-                    await msbuildHost.ReloadAsync(_cts.Token);
-                }
-                else
-                {
-                    await _host.ReloadAsync(_cts.Token);
+                    try { await _host.LoadProjectAsync(loadedPath, _cts.Token); } catch { }
                 }
             }
             catch (TaskCanceledException)
