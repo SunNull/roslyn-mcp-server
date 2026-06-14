@@ -174,6 +174,14 @@ roslyn-mcp-server/
 | C# 语言版本 | preview（启用最新特性） |
 | TreatWarningsAsErrors | 开启（编译期强制安全） |
 
+## 已知局限
+
+| 局限 | 影响 | 规避方案 / 后续修复 |
+|------|------|---------------------|
+| **自包含发布中代码修复器未加载** — `roslyn_get_code_fixes` / `roslyn_apply_code_fix` 通过反射加载 `AppDomain` 中的程序集，但单文件发布不包含 IDE 分析器程序集。 | 这两个工具对大多数诊断返回"无可用修复"。`roslyn_format_document` 和其余 16 个工具不受影响。 | 后续：打包精选分析器程序集（Roslynator、FxCop）。当前：用 `roslyn_diagnostics` 检查问题后手动修复。 |
+| **单文件模式下 adhoc 引用丢失** — 单文件发布时 `Assembly.Location` 返回空字符串，adhoc 编译无法从 BCL 路径构建 `MetadataReference`。 | 独立 `.cs` 文件（不在已加载项目中）会报 CS0518"找不到预定义类型"。项目模式（加载了 `.sln`/`.csproj`）不受影响——MSBuild 独立解析引用。 | 使用项目模式（默认行为——服务器自动探测 `.sln`/`.csproj`）。后续：改用 `MetadataReference.CreateFromStream`。 |
+| **`_solution` 并发读取无锁** — `GetCompilationAsync` 读取 solution 快照时未持有加载锁。高并发场景下（重载期间的并行工具调用），工具可能看到半加载状态。 | 罕见——MCP 协议按会话串行化工具调用。仅在 watcher 重载中途触发查询时出现。 | 后续：改用不可变快照模式（原子替换 `_solution`）。 |
+
 ## License
 
 MIT

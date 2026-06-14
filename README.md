@@ -175,6 +175,14 @@ roslyn-mcp-server/
 | C# language version | preview (latest features) |
 | TreatWarningsAsErrors | enabled (compile-time safety) |
 
+## Known Limitations
+
+| Limitation | Impact | Workaround / Future Fix |
+|-----------|--------|------------------------|
+| **Code fix providers not loaded in self-contained publish** — `roslyn_get_code_fixes` / `roslyn_apply_code_fix` reflect over `AppDomain` assemblies, but single-file publish doesn't bundle IDE analyzer assemblies. | These two tools return "No code fixes available" for most diagnostics. `roslyn_format_document` and all other 16 tools work normally. | Future: bundle a curated set of analyzer assemblies (Roslynator, FxCop). For now, use `roslyn_diagnostics` + manual fixes. |
+| **Adhoc references dropped in single-file mode** — `Assembly.Location` returns empty string when published as single-file, so `AdhocWorkspaceHost` can't build `MetadataReference` from BCL paths. | Standalone `.cs` files (not in a loaded project) get CS0518 "Predefined type not found" for basic types. Project mode (loaded `.sln`/`.csproj`) is unaffected — MSBuild resolves refs independently. | Use project mode (the default — the server auto-detects `.sln`/`.csproj`). Future: switch to `MetadataReference.CreateFromStream` from embedded runtime. |
+| **Concurrent reads of `_solution` are unlocked** — `GetCompilationAsync` reads the solution snapshot without holding the load lock. Under high concurrency (many parallel tool calls during a reload), a tool might see a half-loaded state. | Rare — the MCP protocol serializes tool calls per session. Only triggers if the watcher reloads mid-query. | Future: switch to immutable snapshot pattern (replace `_solution` atomically). |
+
 ## License
 
 MIT
