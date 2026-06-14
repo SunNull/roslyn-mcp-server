@@ -18,11 +18,13 @@
 
 AI 助手获得**编译器级别的实时分析**，底层引擎和 Visual Studio 完全一样（Roslyn）。
 
-## 16 个工具
+## 18 个工具
 
 | 工具 | 功能说明 |
 |------|----------|
 | `roslyn_diagnostics` | 编译错误 + 警告（CS0123 等），精确到行列 |
+| `roslyn_load_project` | 加载/切换 .sln 或 .csproj（通常自动探测） |
+| `roslyn_workspace_info` | 当前状态：是否已加载项目？哪些项目？ |
 | `roslyn_hover` | 符号类型签名、文档注释、成员信息 |
 | `roslyn_goto_definition` | 跳转到符号定义位置 |
 | `roslyn_find_references` | 跨整个解决方案查找所有引用 |
@@ -35,7 +37,6 @@ AI 助手获得**编译器级别的实时分析**，底层引擎和 Visual Studi
 | `roslyn_get_code_fixes` | Roslyn 代码修复建议（和 VS 的灯泡一样） |
 | `roslyn_apply_code_fix` | 应用代码修复，返回修改后的代码 |
 | `roslyn_format_document` | 用 Roslyn 格式化器格式化代码 |
-| `roslyn_workspace_info` | 解决方案/项目概览 |
 | `roslyn_project_references` | 项目引用链 + 程序集引用 |
 | `roslyn_nuget_packages` | 项目使用的 NuGet 包列表 |
 | `roslyn_project_status` | 项目编译状态总览（错误数 + 警告数 + 首批错误） |
@@ -93,21 +94,27 @@ args    = ["exec", "/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/n
 }
 ```
 
-## 加载真实项目
+## 工作原理
 
-默认以**独立模式**运行（单文件分析，不解析 NuGet 引用）。如果要分析真实项目，传入 `--workspace` 参数：
+服务器使用 **UnifiedWorkspaceHost**，透明地选择正确的分析模式——无需手动配置：
 
-```toml
-[[plugins]]
-name    = "roslyn"
-command = "dotnet"
-args    = ["exec", "/path/to/roslyn-mcp-server.dll", "--workspace", "/path/to/YourSolution.sln"]
+1. **启动时**：自动探测工作目录下的 `.sln`/`.csproj`。找到 → 立即启用完整语义分析。
+2. **文件查询时**：当 AI 查询一个 `.cs` 文件，host 会向上搜索其所属项目（像 git 找 `.git`）。找到 → 自动加载并解析全部 NuGet 引用。没找到 → 降级为 adhoc 编译（语法 + 基础类型检查）。
+3. **显式控制**：AI 可以随时调用 `roslyn_load_project` 加载或切换项目。
+
+```
+AI 调用 roslyn_diagnostics("src/Program.cs")
+  │
+  ├─ 文件在已加载项目中？ → 完整 Roslyn 分析（NuGet 引用全解析）
+  │
+  ├─ 文件不在项目中？ → 向上搜索 .sln/.csproj
+  │   ├─ 找到 → 自动加载 → 完整分析
+  │   └─ 没找到 → adhoc 降级（语法检查）
+  │
+  AI 还可以：roslyn_load_project("/path/to/OtherSolution.sln")
 ```
 
-使用 `--workspace` 后，服务器会：
-1. 通过 MSBuildWorkspace 加载 `.sln`/`.csproj`
-2. 解析所有 NuGet 包和项目引用
-3. 启动 FileSystemWatcher **监听文件变化，增量重编译**（500ms 防抖）
+无需 `--workspace` 参数，无需模式切换——AI 只管传文件路径。
 
 ## 架构
 
@@ -117,11 +124,14 @@ MCP 客户端 (Reasonix / Claude / Cursor)
     ▼
 RoslynMcpServer（.NET 11 控制台应用）
     ├── ModelContextProtocol SDK 1.4.0（官方 C# MCP SDK）
-    ├── 16 个 [McpServerTool] 方法，分为 4 组
+    ├── 18 个 [McpServerTool] 方法，分为 5 组
     └── Roslyn 4.13（Microsoft.CodeAnalysis）
-        ├── MSBuildWorkspace — 加载 .sln/.csproj，解析全部引用
-        ├── AdhocWorkspace — 独立 .cs 文件的降级方案
-        └── WorkspaceWatcher — 文件变化监听 + 增量重编译
+        └── UnifiedWorkspaceHost
+            ├── 启动时自动探测 .sln/.csproj
+            ├── 从 .cs 文件路径自动向上发现项目
+            ├── MSBuildWorkspace（完整 NuGet + 项目引用）
+            ├── Adhoc 编译（独立文件降级）
+            └── WorkspaceWatcher（文件变化监听 + 增量重编译）
 ```
 
 ### 项目结构
@@ -130,19 +140,18 @@ RoslynMcpServer（.NET 11 控制台应用）
 roslyn-mcp-server/
 ├── src/
 │   ├── RoslynMcpServer/              # MCP 入口 + 工具
-│   │   ├── Program.cs                # stdio 传输 + workspace 加载
+│   │   ├── Program.cs                # 自动探测项目 + stdio 传输
 │   │   └── Tools/
 │   │       ├── DiagnosticsTool.cs    # roslyn_diagnostics
 │   │       ├── SemanticTools.cs      # hover/goto_def/find_ref/completion/sig_help
 │   │       ├── StructureTools.cs     # find_symbols/file_members/impls/rename
 │   │       ├── CodeFixTools.cs       # get_fixes/apply_fix/format
-│   │       └── ProjectTools.cs       # workspace_info/proj_refs/nuget/status
+│   │       └── ProjectManagementTools.cs  # load_project/workspace_info/refs/nuget/status
 │   │
 │   └── RoslynMcpServer.Core/         # 核心层（不依赖 MCP）
 │       ├── Workspace/
-│       │   ├── IWorkspaceHost.cs     # 可插拔的 host 接口
-│       │   ├── MSBuildWorkspaceHost.cs  # 真实项目加载
-│       │   ├── AdhocWorkspaceHost.cs    # 单文件降级
+│       │   ├── IWorkspaceHost.cs     # 统一 host 接口
+│       │   ├── UnifiedWorkspaceHost.cs  # 项目 + adhoc 自动切换
 │       │   └── WorkspaceWatcher.cs      # 文件变化监听
 │       ├── Analysis/
 │       │   ├── DiagnosticAnalyzer.cs    # 诊断提取与格式化
@@ -150,8 +159,9 @@ roslyn-mcp-server/
 │       └── Models/
 │           └── DiagnosticResult.cs
 │
-├── tests/                            # xUnit（18 个测试）
+├── tests/                            # xUnit（17 个测试）
 ├── samples/                          # 测试样本
+├── .mcp.json                         # MCP 清单（安装器自动识别）
 ├── install.sh / install.bat          # 一键安装脚本
 └── reasonix.toml                     # Reasonix 配置模板
 ```

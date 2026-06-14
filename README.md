@@ -18,11 +18,13 @@ write code → roslyn_diagnostics → instant feedback (like Visual Studio's red
 
 The agent gets **compiler-grade analysis in real time**, powered by the same Roslyn engine that drives Visual Studio.
 
-## 16 Tools
+## 18 Tools
 
 | Tool | What it does |
 |------|-------------|
 | `roslyn_diagnostics` | Compilation errors + warnings (CS0123, etc.) |
+| `roslyn_load_project` | Load/switch a .sln or .csproj (usually auto-detected) |
+| `roslyn_workspace_info` | Current status: is a project loaded? which projects? |
 | `roslyn_hover` | Type signature, docs, member info for a symbol |
 | `roslyn_goto_definition` | Jump to where a symbol is defined |
 | `roslyn_find_references` | All references across the solution |
@@ -35,7 +37,6 @@ The agent gets **compiler-grade analysis in real time**, powered by the same Ros
 | `roslyn_get_code_fixes` | Roslyn-powered code fix suggestions |
 | `roslyn_apply_code_fix` | Apply a code fix and return the changed code |
 | `roslyn_format_document` | Format code with Roslyn's formatter |
-| `roslyn_workspace_info` | Solution/project overview |
 | `roslyn_project_references` | Project-to-project + assembly references |
 | `roslyn_nuget_packages` | NuGet packages used by a project |
 | `roslyn_project_status` | Error/warning count + first errors |
@@ -93,21 +94,27 @@ args    = ["exec", "/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/n
 }
 ```
 
-## Loading a Real Project
+## How It Works
 
-By default the server runs in **standalone mode** (single-file analysis, no NuGet references). For real projects, pass `--workspace`:
+The server uses a **UnifiedWorkspaceHost** that transparently picks the right analysis mode — no manual configuration needed:
 
-```toml
-[[plugins]]
-name    = "roslyn"
-command = "dotnet"
-args    = ["exec", "/path/to/roslyn-mcp-server.dll", "--workspace", "/path/to/YourSolution.sln"]
+1. **Startup**: auto-detects `.sln`/`.csproj` in the working directory. Found → full semantic analysis active immediately.
+2. **File query**: when the AI queries a `.cs` file, the host searches upward for its containing project (like git finding `.git`). Found → loads it and resolves all NuGet references. Not found → falls back to adhoc compilation (syntax + basic types).
+3. **Explicit control**: the AI can call `roslyn_load_project` at any time to load or switch projects.
+
+```
+AI calls roslyn_diagnostics("src/Program.cs")
+  │
+  ├─ File in loaded project? → full Roslyn analysis (NuGet refs resolved)
+  │
+  ├─ File not in project? → search upward for .sln/.csproj
+  │   ├─ Found → auto-load → full analysis
+  │   └─ Not found → adhoc fallback (syntax check)
+  │
+  AI can also: roslyn_load_project("/path/to/OtherSolution.sln")
 ```
 
-With `--workspace`, the server:
-1. Loads the `.sln`/`.csproj` via MSBuildWorkspace
-2. Resolves all NuGet packages and project references
-3. Starts a FileSystemWatcher that **incrementally recompiles on file change** (500ms debounce)
+No `--workspace` flag, no mode switching — the AI just passes file paths.
 
 ## Architecture
 
@@ -117,11 +124,14 @@ MCP Client (Reasonix / Claude / Cursor)
     ▼
 RoslynMcpServer (.NET 11 console app)
     ├── ModelContextProtocol SDK 1.4.0 (official C# MCP SDK)
-    ├── 16 [McpServerTool] methods across 4 groups
+    ├── 18 [McpServerTool] methods across 5 groups
     └── Roslyn 4.13 (Microsoft.CodeAnalysis)
-        ├── MSBuildWorkspace — loads .sln/.csproj, resolves all references
-        ├── AdhocWorkspace — fallback for standalone .cs files
-        └── WorkspaceWatcher — FileSystemWatcher + incremental recompile
+        └── UnifiedWorkspaceHost
+            ├── Auto-detect .sln/.csproj on startup
+            ├── Auto-discover project from .cs file path
+            ├── MSBuildWorkspace (full NuGet + project refs)
+            ├── Adhoc compilation (standalone file fallback)
+            └── WorkspaceWatcher (FileSystemWatcher + incremental recompile)
 ```
 
 ### Project Structure
@@ -130,19 +140,18 @@ RoslynMcpServer (.NET 11 console app)
 roslyn-mcp-server/
 ├── src/
 │   ├── RoslynMcpServer/              # MCP entry + tools
-│   │   ├── Program.cs                # stdio transport + workspace loading
+│   │   ├── Program.cs                # auto-detect project + stdio transport
 │   │   └── Tools/
 │   │       ├── DiagnosticsTool.cs    # roslyn_diagnostics
 │   │       ├── SemanticTools.cs      # hover/goto_def/find_ref/completion/sig_help
 │   │       ├── StructureTools.cs     # find_symbols/file_members/impls/rename
 │   │       ├── CodeFixTools.cs       # get_fixes/apply_fix/format
-│   │       └── ProjectTools.cs       # workspace_info/proj_refs/nuget/status
+│   │       └── ProjectManagementTools.cs  # load_project/workspace_info/refs/nuget/status
 │   │
 │   └── RoslynMcpServer.Core/         # Core (no MCP dependency)
 │       ├── Workspace/
-│       │   ├── IWorkspaceHost.cs     # pluggable host interface
-│       │   ├── MSBuildWorkspaceHost.cs  # real project loading
-│       │   ├── AdhocWorkspaceHost.cs    # single-file fallback
+│       │   ├── IWorkspaceHost.cs     # unified host interface
+│       │   ├── UnifiedWorkspaceHost.cs  # project + adhoc auto-switching
 │       │   └── WorkspaceWatcher.cs      # file change monitoring
 │       ├── Analysis/
 │       │   ├── DiagnosticAnalyzer.cs
@@ -150,8 +159,9 @@ roslyn-mcp-server/
 │       └── Models/
 │           └── DiagnosticResult.cs
 │
-├── tests/                            # xUnit (18 tests)
+├── tests/                            # xUnit (17 tests)
 ├── samples/                          # test fixtures
+├── .mcp.json                         # MCP manifest (auto-detect by installers)
 ├── install.sh / install.bat          # one-command install
 └── reasonix.toml                     # Reasonix config template
 ```
