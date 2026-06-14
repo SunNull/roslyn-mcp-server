@@ -45,41 +45,40 @@ AI 助手获得**编译器级别的实时分析**，底层引擎和 Visual Studi
 
 ### 前置条件
 
-- [.NET 11 SDK](https://dotnet.microsoft.com/download)（或 .NET 10+）
+- **无！** 自动下载预编译二进制，不需要安装 .NET SDK
 - [Reasonix](https://github.com/esengine/deepseek-reasonix)（或任何 MCP 客户端）
 
 ### 一键安装（Reasonix）
 
 **Linux/macOS：**
 ```bash
-git clone https://github.com/SunNull/roslyn-mcp-server.git
-cd roslyn-mcp-server
-./install.sh                    # 或加载项目: ./install.sh /path/to/your/project.sln
+curl -sL https://raw.githubusercontent.com/SunNull/roslyn-mcp-server/main/install.sh | bash
+# 或 clone 后运行：
+# ./install.sh                    # 下载预编译二进制 + 注册
 ```
 
 **Windows：**
-```cmd
-git clone https://github.com/SunNull/roslyn-mcp-server.git
-cd roslyn-mcp-server
-install.bat                     REM 或加载项目: install.bat C:\path\to\your\project.sln
+```powershell
+# 下载 install.bat 并运行，或 clone 后：
+install.bat
 ```
 
-脚本会自动编译并执行 `reasonix mcp add roslyn ...` 完成注册。
+脚本自动从 GitHub Releases 下载**自包含二进制**（不需要 .NET SDK），然后执行
+`reasonix mcp add roslyn ...` 完成注册。
+
+回退：如果没有匹配平台的预编译包，脚本会从源码编译（需要 .NET SDK），加 `--from-source`。
 
 ### 手动安装（任何 MCP 客户端）
 
-```bash
-dotnet build -c Release
-```
-
-然后在你的 MCP 客户端配置中添加：
+1. 从 [Releases](https://github.com/SunNull/roslyn-mcp-server/releases) 下载对应平台的压缩包
+2. 解压到任意目录
+3. 添加到 MCP 客户端配置：
 
 **Reasonix（`reasonix.toml`）：**
 ```toml
 [[plugins]]
 name    = "roslyn"
-command = "dotnet"
-args    = ["exec", "/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/net11.0/roslyn-mcp-server.dll"]
+command = "/path/to/roslyn-mcp-server"
 ```
 
 **Claude Code（`.mcp.json`）：**
@@ -87,8 +86,7 @@ args    = ["exec", "/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/n
 {
   "mcpServers": {
     "roslyn": {
-      "command": "dotnet",
-      "args": ["exec", "/path/to/roslyn-mcp-server.dll"]
+      "command": "/path/to/roslyn-mcp-server"
     }
   }
 }

@@ -1,0 +1,62 @@
+name: Release
+
+# 触发条件：推送 v* 标签时自动构建并发布到 GitHub Releases
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:  # 也支持手动触发
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # gh release upload 权限
+
+    strategy:
+      matrix:
+        include:
+          # 三个平台，每个一个 self-contained 包
+          - os: ubuntu-latest
+            rid: linux-x64
+            archive: tar.gz
+          - os: macos-latest
+            rid: osx-arm64
+            archive: tar.gz
+          - os: windows-latest
+            rid: win-x64
+            archive: zip
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'  # CI 用稳定版构建（net11 preview 也兼容）
+
+      - name: Publish (self-contained)
+        run: |
+          dotnet publish src/RoslynMcpServer -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -o ./publish
+
+      - name: Create archive
+        shell: bash
+        run: |
+          cd ./publish
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a -tzip ../roslyn-mcp-server-${{ matrix.rid }}.zip .
+          else
+            tar -czf ../roslyn-mcp-server-${{ matrix.rid }}.tar.gz .
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: roslyn-mcp-server-${{ matrix.rid }}.${{ matrix.archive }}
+          generate_release_notes: true

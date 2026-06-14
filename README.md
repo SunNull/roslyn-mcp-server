@@ -45,41 +45,41 @@ The agent gets **compiler-grade analysis in real time**, powered by the same Ros
 
 ### Prerequisites
 
-- [.NET 11 SDK](https://dotnet.microsoft.com/download) (or .NET 10+)
+- **None!** Pre-built binaries are downloaded automatically. No .NET SDK needed.
 - [Reasonix](https://github.com/esengine/deepseek-reasonix) (or any MCP client)
 
 ### One-command install (Reasonix)
 
 **Linux/macOS:**
 ```bash
-git clone https://github.com/SunNull/roslyn-mcp-server.git
-cd roslyn-mcp-server
-./install.sh                    # or: ./install.sh /path/to/your/project.sln
+curl -sL https://raw.githubusercontent.com/SunNull/roslyn-mcp-server/main/install.sh | bash
+# 或 clone 后运行：
+# ./install.sh                    # 下载预编译二进制 + 注册
 ```
 
 **Windows:**
-```cmd
-git clone https://github.com/SunNull/roslyn-mcp-server.git
-cd roslyn-mcp-server
-install.bat                     REM or: install.bat C:\path\to\your\project.sln
+```powershell
+# 下载 install.bat 并运行，或 clone 后：
+install.bat
 ```
 
-The script compiles the server and runs `reasonix mcp add roslyn ...` to register it.
+The script downloads a **self-contained binary** (no .NET SDK needed) from
+GitHub Releases, then runs `reasonix mcp add roslyn ...` to register it.
+
+Fallback: if no pre-built binary matches your platform, the script compiles
+from source (requires .NET SDK) with `--from-source`.
 
 ### Manual install (any MCP client)
 
-```bash
-dotnet build -c Release
-```
-
-Then add to your MCP client's config:
+1. Download the archive for your platform from [Releases](https://github.com/SunNull/roslyn-mcp-server/releases)
+2. Unzip to any directory
+3. Add to your MCP client's config:
 
 **Reasonix (`reasonix.toml`):**
 ```toml
 [[plugins]]
 name    = "roslyn"
-command = "dotnet"
-args    = ["exec", "/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/net11.0/roslyn-mcp-server.dll"]
+command = "/path/to/roslyn-mcp-server"
 ```
 
 **Claude Code (`.mcp.json`):**
@@ -87,8 +87,7 @@ args    = ["exec", "/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/n
 {
   "mcpServers": {
     "roslyn": {
-      "command": "dotnet",
-      "args": ["exec", "/path/to/roslyn-mcp-server.dll"]
+      "command": "/path/to/roslyn-mcp-server"
     }
   }
 }
