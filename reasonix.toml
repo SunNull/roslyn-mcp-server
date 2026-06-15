@@ -1,23 +1,31 @@
 # Reasonix + Roslyn MCP Server 集成配置模板
 #
-# 注意：Windows 路径请用正斜杠（/），TOML 中反斜杠会触发 \U 转义。
+# 前提：先安装 dotnet tool
+#   dotnet tool install -g SunNull.RoslynMcpServer
 #
-# 一键安装：./install.sh 或 install.bat
-# 手动注册：reasonix mcp add roslyn dotnet exec "C:/path/to/roslyn-mcp-server.dll"
+# 安装后 roslyn-mcp-server 命令在 PATH 中，可直接配置。
 #
 # tier 说明：
 #   "background" — 后台连接，不阻塞（默认）
 #   "eager"      — 阻塞直到握手完成
 #   "lazy"       — 首次使用时启动
 
-# ── standalone 模式（单文件分析，不加载项目引用）──────────────────────
+# ── 方式一（推荐）：dotnet tool 安装后直接用命令名 ─────────────────────
 
 [[plugins]]
 name    = "roslyn"
-command = "dotnet"
-args    = ["exec", "C:/Users/yourname/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/net11.0/roslyn-mcp-server.dll"]
+command = "roslyn-mcp-server"
 tier    = "background"
 
-# ── 项目模式（加载真实 .sln，解析全部 NuGet 引用）─────────────────────
-# 加 --workspace 参数：
-# args = ["exec", "C:/path/to/roslyn-mcp-server.dll", "--workspace", "C:/path/to/YourSolution.sln"]
+# ── 方式二：直接用 DLL（从源码编译）──────────────────────────────────
+# 适合开发/调试场景，直接指向编译产物：
+#
+# [[plugins]]
+# name    = "roslyn"
+# command = "dotnet"
+# args    = ["exec", "C:/path/to/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/net11.0/roslyn-mcp-server.dll"]
+# tier    = "background"
+
+# ── 使用方式 ─────────────────────────────────────────────────────────
+# 配置完成后重启 Reasonix，18 个 roslyn_csharp_* 工具自动可用。
+# 在 C# 项目目录下启动 Reasonix，server 自动探测 .sln/.slnx/.csproj。
