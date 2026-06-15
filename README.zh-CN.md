@@ -50,7 +50,7 @@ AI 助手获得**编译器级别的实时分析**，底层引擎和 Visual Studi
 最简单的方式——一行命令安装，自动加入 PATH，无需手动下载二进制：
 
 ```bash
-dotnet tool install -g roslyn-mcp-server
+dotnet tool install -g SunNull.RoslynMcpServer
 ```
 
 需要 [.NET SDK](https://dotnet.microsoft.com/download)（tool 运行在已安装的 runtime 上）。安装后 `roslyn-mcp-server` 即在 PATH 中。
@@ -73,7 +73,7 @@ command = "roslyn-mcp-server"
 }
 ```
 
-后续升级：`dotnet tool update -g roslyn-mcp-server`。
+后续升级：`dotnet tool update -g SunNull.RoslynMcpServer`。
 
 ### 方式二：安装脚本（预编译二进制，不需要 SDK）
 

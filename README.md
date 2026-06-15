@@ -50,7 +50,7 @@ All tools are prefixed `roslyn_csharp_` to make it explicit they only analyze **
 The simplest way — one command, auto-added to PATH, no manual binary download:
 
 ```bash
-dotnet tool install -g roslyn-mcp-server
+dotnet tool install -g SunNull.RoslynMcpServer
 ```
 
 Requires the [.NET SDK](https://dotnet.microsoft.com/download) (the tool runs on
@@ -74,7 +74,7 @@ command = "roslyn-mcp-server"
 }
 ```
 
-Upgrade later: `dotnet tool update -g roslyn-mcp-server`.
+Upgrade later: `dotnet tool update -g SunNull.RoslynMcpServer`.
 
 ### Option 2: Install script (pre-built binary, no SDK needed)
 
