@@ -37,9 +37,12 @@ public sealed class WorkspaceWatcher : IDisposable
     {
         // Watch .cs files (source changes)
         Watch("*.cs");
-        // Watch .csproj/.sln (project structure changes — added files, new packages)
+        // Watch .csx (C# script files)
+        Watch("*.csx");
+        // Watch .csproj/.sln/.slnx (project structure changes — added files, new packages)
         Watch("*.csproj");
         Watch("*.sln");
+        Watch("*.slnx");
     }
 
     private void Watch(string pattern)

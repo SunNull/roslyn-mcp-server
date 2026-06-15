@@ -20,14 +20,15 @@ public static class DiagnosticsTools
 {
     /// <summary>
     /// Returns Roslyn compilation diagnostics (errors + warnings) for a C# file
-    /// or directory. This is the skeleton stage's single tool — it validates the
-    /// end-to-end MCP pipeline before we add hover/references/code-fixes.
+    /// or directory — the primary "is this code compilable?" check. AI agents
+    /// call this after editing a .cs file to get real-time feedback (syntax
+    /// errors, missing usings, type mismatches) without a full dotnet build.
     /// </summary>
-    [McpServerTool(Name = "roslyn_diagnostics")]
+    [McpServerTool(Name = "roslyn_csharp_diagnostics")]
     [Description(
-        "Get Roslyn compilation diagnostics for a C# file or directory. " +
+        "C# only. Get Roslyn compilation diagnostics for a C# file or directory. " +
         "Returns errors and warnings with exact file:line:column locations and " +
-        "diagnostic IDs (CS0123, etc.). Use after editing a .cs file to check if " +
+        "diagnostic IDs (CS0123, etc.). Use after editing a .cs or .csx file to check if " +
         "it compiles — catches syntax errors, missing usings, type mismatches, " +
         "and unresolved symbols in real time without a full dotnet build.")]
     public static async Task<string> GetDiagnostics(
@@ -52,15 +53,35 @@ public static class DiagnosticsTools
         {
             var compilation = await host.GetCompilationAsync(path, ct);
             var diagnostics = DiagnosticAnalyzer.Extract(compilation, minSeverity);
-            return DiagnosticAnalyzer.FormatAsText(diagnostics);
+            var result = DiagnosticAnalyzer.FormatAsText(diagnostics);
+
+            // If no project is loaded, the file was analyzed in standalone (adhoc)
+            // mode — NuGet types won't resolve. Warn the AI so it knows.
+            if (!host.IsProjectLoaded && diagnostics.Count > 0)
+            {
+                result = "[Standalone mode] NuGet types and cross-project references won't resolve. " +
+                         "Call roslyn_csharp_load_project with a .csproj for full analysis.\n\n" + result;
+            }
+
+            return result;
         }
         catch (FileNotFoundException ex)
         {
-            return $"Error: file or directory not found: {ex.FileName ?? path}";
+            return $"Error: {ex.Message}";
+        }
+        catch (NotSupportedException ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            return $"Error: timed out while analyzing '{path}'. " +
+                   "The project may be very large. Try again or use a smaller scope (a single .cs file).";
         }
         catch (Exception ex)
         {
-            return $"Error analyzing '{path}': {ex.Message}";
+            return $"Error analyzing '{path}': {ex.Message}. " +
+                   "If this is a .cs file, ensure a project is loaded (roslyn_csharp_load_project).";
         }
     }
 }

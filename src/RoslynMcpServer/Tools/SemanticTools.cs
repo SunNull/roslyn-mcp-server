@@ -23,10 +23,10 @@ namespace RoslynMcpServer.Tools;
 [McpServerToolType]
 public static class SemanticTools
 {
-    // ── roslyn_hover ─────────────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_hover")]
+    // ── roslyn_csharp_hover ─────────────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_hover")]
     [Description(
-        "Get the type signature, documentation, and member info for a symbol at a " +
+        "C# only. Get the type signature, documentation, and member info for a symbol at a " +
         "specific location. Give the file path, 1-based line number, and the symbol " +
         "text. Returns the fully-qualified type name, method signature, or type info.")]
     public static async Task<string> Hover(
@@ -73,10 +73,10 @@ public static class SemanticTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_goto_definition ───────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_goto_definition")]
+    // ── roslyn_csharp_goto_definition ───────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_goto_definition")]
     [Description(
-        "Jump to where a symbol is defined. Returns the file path, line number, " +
+        "C# only. Jump to where a symbol is defined. Returns the file path, line number, " +
         "and a snippet of the definition. Give the file, 1-based line, and symbol.")]
     public static async Task<string> GotoDefinition(
         IWorkspaceHost host,
@@ -112,10 +112,10 @@ public static class SemanticTools
         return $"{Path.GetFileName(defFile)}:{defLine}  {snippet}\n  → {sym.ToDisplayString()}";
     }
 
-    // ── roslyn_find_references ───────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_find_references")]
+    // ── roslyn_csharp_find_references ───────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_find_references")]
     [Description(
-        "Find all references to a symbol across the entire solution. Give the " +
+        "C# only. Find all references to a symbol across the entire solution. Give the " +
         "file, 1-based line, and symbol text. Returns each reference as file:line.")]
     public static async Task<string> FindReferences(
         IWorkspaceHost host,
@@ -162,10 +162,10 @@ public static class SemanticTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_completion ────────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_completion")]
+    // ── roslyn_csharp_completion ────────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_completion")]
     [Description(
-        "Get intelligent code completion suggestions at a position in a .cs file. " +
+        "C# only. Get intelligent code completion suggestions at a position in a .cs file. " +
         "Give the file path and 1-based line/column position. Returns method, " +
         "property, and type names available at that location.")]
     public static async Task<string> Completion(
@@ -220,10 +220,10 @@ public static class SemanticTools
             : sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_signature_help ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_signature_help")]
+    // ── roslyn_csharp_signature_help ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_signature_help")]
     [Description(
-        "Get method signature help (parameter info) for the method call at a " +
+        "C# only. Get method signature help (parameter info) for the method call at a " +
         "position. Give the file, 1-based line, and the method name.")]
     public static async Task<string> SignatureHelp(
         IWorkspaceHost host,

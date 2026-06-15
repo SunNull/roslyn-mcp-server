@@ -11,7 +11,24 @@
     <RootNamespace>RoslynMcpServer</RootNamespace>
     <AssemblyName>roslyn-mcp-server</AssemblyName>
     <Version>0.1.0</Version>
+
+    <!-- Pack as a global tool: 'dotnet tool install -g roslyn-mcp-server' -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>roslyn-mcp-server</ToolCommandName>
+    <PackageId>roslyn-mcp-server</PackageId>
+    <Title>Roslyn MCP Server</Title>
+    <Description>A .NET MCP server that exposes Roslyn compiler analysis (diagnostics, hover, references, code fixes) to AI coding agents — real-time C# feedback without dotnet build.</Description>
+    <PackageTags>MCP;Roslyn;CSharp;AI;CodeIntelligence;ModelContextProtocol</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/SunNull/roslyn-mcp-server</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="1.4.0" />

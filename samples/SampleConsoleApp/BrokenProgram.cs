@@ -1,6 +1,6 @@
-// Sample C# file with intentional errors — used to verify roslyn_diagnostics
+// Sample C# file with intentional errors — used to verify roslyn_csharp_diagnostics
 // surfaces real compilation problems. Run the MCP server, call
-// roslyn_diagnostics on this file, and you should see CS errors.
+// roslyn_csharp_diagnostics on this file, and you should see CS errors.
 
 using System;
 

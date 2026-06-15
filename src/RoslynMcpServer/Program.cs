@@ -11,9 +11,9 @@ using RoslynMcpServer.Core.Workspace;
 // project-grade analysis (MSBuildWorkspace) and standalone-file analysis
 // (adhoc). The AI doesn't need to pick a mode — it just queries files.
 //
-// On startup we auto-detect a .sln/.csproj in the current directory. If found,
+// On startup we auto-detect a .sln/.slnx/.csproj in the current directory. If found,
 // full semantic analysis is active from the start. If not, the server runs in
-// standalone mode until the AI loads a project (roslyn_load_project) or a .cs
+// standalone mode until the AI loads a project (roslyn_csharp_load_project) or a .cs
 // file query triggers upward auto-discovery.
 //
 // When a project is loaded, a WorkspaceWatcher monitors .cs/.csproj files and
@@ -24,24 +24,39 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Logging.AddConsole(options =>
 {
-    options.LogToStandardErrorThreshold = LogLevel.Warning;
+    // MCP stdio: ALL logging must go to stderr. stdout is reserved for
+    // JSON-RPC only — any log line on stdout corrupts the protocol.
+    options.LogToStandardErrorThreshold = LogLevel.Trace;
 });
 
-var host = new UnifiedWorkspaceHost();
+var workspaceHost = new UnifiedWorkspaceHost();
 
-// Auto-detect + load .sln/.csproj in the working directory, then start the
+// Auto-detect + load .sln/.slnx/.csproj in the working directory, then start the
 // file watcher if a project was found. Blocking so the first tool call always
 // sees the loaded state.
-await AutoDetectAndWatchAsync(host);
+await AutoDetectAndWatchAsync(workspaceHost);
 
-builder.Services.AddSingleton<IWorkspaceHost>(host);
+builder.Services.AddSingleton<IWorkspaceHost>(workspaceHost);
 
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
     .WithToolsFromAssembly();
 
-await builder.Build().RunAsync();
+// Build the host with a using block so Dispose runs on exit — this releases
+// the MSBuildWorkspace file locks, FileSystemWatcher handles, and the load
+// semaphore cleanly, even on Ctrl+C / SIGTERM / stdin-EOF shutdown.
+using var app = builder.Build();
+
+// Register graceful-shutdown cleanup: dispose the workspace host and watcher
+// when the application is stopping (covers stdin-EOF, Ctrl+C, SIGTERM).
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+lifetime.ApplicationStopping.Register(() =>
+{
+    try { workspaceHost.Dispose(); } catch { /* best-effort cleanup */ }
+});
+
+await app.RunAsync();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,8 +66,10 @@ static async Task AutoDetectAndWatchAsync(UnifiedWorkspaceHost host)
     {
         var cwd = Environment.CurrentDirectory;
 
-        // Search for .sln first (multi-project), then .csproj.
-        var sln = Directory.GetFiles(cwd, "*.sln", SearchOption.TopDirectoryOnly);
+        // Search for .sln/.slnx first (multi-project), then .csproj.
+        var sln = Directory.GetFiles(cwd, "*.sln", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.GetFiles(cwd, "*.slnx", SearchOption.TopDirectoryOnly))
+            .ToArray();
         if (sln.Length > 0)
         {
             await host.LoadProjectAsync(sln[0]);
@@ -70,7 +87,7 @@ static async Task AutoDetectAndWatchAsync(UnifiedWorkspaceHost host)
             return;
         }
 
-        Console.Error.WriteLine("[roslyn-mcp] No .sln/.csproj in cwd — starting in standalone mode.");
+        Console.Error.WriteLine("[roslyn-mcp] No .sln/.slnx/.csproj in cwd — starting in standalone mode.");
     }
     catch (Exception ex)
     {

@@ -24,10 +24,10 @@ namespace RoslynMcpServer.Tools;
 [McpServerToolType]
 public static class StructureTools
 {
-    // ── roslyn_find_symbols ──────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_find_symbols")]
+    // ── roslyn_csharp_find_symbols ──────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_find_symbols")]
     [Description(
-        "Search for symbols (classes, methods, properties, fields, events) by name " +
+        "C# only. Search for symbols (classes, methods, properties, fields, events) by name " +
         "across the entire solution. Returns file:line locations. Use for " +
         "'where is MyClass defined' queries.")]
     public static async Task<string> FindSymbols(
@@ -36,9 +36,12 @@ public static class StructureTools
         [Description("Optional: filter by symbol kind (class, method, property, etc.)")] string? kind_filter = null,
         CancellationToken ct = default)
     {
+        // Auto-wait if a project load is in progress.
+        await host.WaitForLoadAsync(ct);
+
         var solution = host.CurrentSolution;
         if (solution == null)
-            return "Error: no solution loaded. Call roslyn_workspace_info or load a .sln/.csproj first.";
+            return "Error: no solution loaded. Call roslyn_csharp_workspace_info or load a .sln/.slnx/.csproj first.";
 
         // Use the built-in symbol finder which searches all projects.
         var results = (await SymbolFinder.FindSourceDeclarationsAsync(solution, pattern, false, cancellationToken: ct)).ToList();
@@ -70,10 +73,10 @@ public static class StructureTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_get_file_members ──────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_get_file_members")]
+    // ── roslyn_csharp_get_file_members ──────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_get_file_members")]
     [Description(
-        "List all top-level declarations (classes, interfaces, structs, enums) and " +
+        "C# only. List all top-level declarations (classes, interfaces, structs, enums) and " +
         "their members in a .cs file. Returns a hierarchical tree. Use for " +
         "'show me everything in this file' queries.")]
     public static async Task<string> GetFileMembers(
@@ -135,10 +138,10 @@ public static class StructureTools
         _ => ""
     };
 
-    // ── roslyn_find_implementations ──────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_find_implementations")]
+    // ── roslyn_csharp_find_implementations ──────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_find_implementations")]
     [Description(
-        "Find all implementations of an interface or abstract method/class. Give " +
+        "C# only. Find all implementations of an interface or abstract method/class. Give " +
         "the file, 1-based line, and symbol text. Returns each implementation.")]
     public static async Task<string> FindImplementations(
         IWorkspaceHost host,
@@ -147,6 +150,7 @@ public static class StructureTools
         [Description("The interface or abstract member name")] string symbol,
         CancellationToken ct = default)
     {
+        await host.WaitForLoadAsync(ct);
         var solution = host.CurrentSolution;
         var doc = await host.GetDocumentAsync(file, ct);
         if (doc == null || solution == null)
@@ -195,10 +199,10 @@ public static class StructureTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_preview_rename ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_preview_rename")]
+    // ── roslyn_csharp_preview_rename ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_preview_rename")]
     [Description(
-        "Preview all locations that would change if a symbol were renamed. Give the " +
+        "C# only. Preview all locations that would change if a symbol were renamed. Give the " +
         "file, 1-based line, current symbol name, and proposed new name. Returns the " +
         "list of affected locations WITHOUT applying any changes.")]
     public static async Task<string> PreviewRename(
@@ -209,6 +213,7 @@ public static class StructureTools
         [Description("Proposed new name")] string new_name,
         CancellationToken ct = default)
     {
+        await host.WaitForLoadAsync(ct);
         var solution = host.CurrentSolution;
         var doc = await host.GetDocumentAsync(file, ct);
         if (doc == null || solution == null)

@@ -23,10 +23,10 @@ namespace RoslynMcpServer.Tools;
 [McpServerToolType]
 public static class CodeFixTools
 {
-    // ── roslyn_get_code_fixes ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_get_code_fixes")]
+    // ── roslyn_csharp_get_code_fixes ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_get_code_fixes")]
     [Description(
-        "Get Roslyn code fix suggestions for a specific diagnostic in a .cs file. " +
+        "C# only. Get Roslyn code fix suggestions for a specific diagnostic in a .cs file. " +
         "Give the file path, 1-based line, and diagnostic ID (e.g. CS0219, IDE0060). " +
         "Returns available fixes with descriptions but does NOT apply them.")]
     public static async Task<string> GetCodeFixes(
@@ -66,19 +66,19 @@ public static class CodeFixTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_apply_code_fix ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_apply_code_fix")]
+    // ── roslyn_csharp_apply_code_fix ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_apply_code_fix")]
     [Description(
-        "Apply a Roslyn code fix to a .cs file and return the changed text. Give " +
+        "C# only. Apply a Roslyn code fix to a .cs file and return the changed text. Give " +
         "the file path, 1-based line, diagnostic ID, and the fix number from " +
-        "roslyn_get_code_fixes. Does NOT write to disk — returns the new text for " +
+        "roslyn_csharp_get_code_fixes. Does NOT write to disk — returns the new text for " +
         "the model to review and write via write_file.")]
     public static async Task<string> ApplyCodeFix(
         IWorkspaceHost host,
         [Description("Path to the .cs file")] string file,
         [Description("1-based line number of the diagnostic")] int line,
         [Description("The diagnostic ID")] string diagnostic_id,
-        [Description("Fix number from roslyn_get_code_fixes (1-based)")] int fix_number,
+        [Description("Fix number from roslyn_csharp_get_code_fixes (1-based)")] int fix_number,
         CancellationToken ct = default)
     {
         var doc = await host.GetDocumentAsync(file, ct);
@@ -128,10 +128,10 @@ public static class CodeFixTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_format_document ───────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_format_document")]
+    // ── roslyn_csharp_format_document ───────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_format_document")]
     [Description(
-        "Format a .cs file using Roslyn's formatter (same engine as Visual Studio's " +
+        "C# only. Format a .cs file using Roslyn's formatter (same engine as Visual Studio's " +
         "Format Document). Returns the formatted text without writing to disk.")]
     public static async Task<string> FormatDocument(
         IWorkspaceHost host,

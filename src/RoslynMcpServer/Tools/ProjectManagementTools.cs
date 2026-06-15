@@ -10,25 +10,25 @@ using RoslynMcpServer.Core.Workspace;
 namespace RoslynMcpServer.Tools;
 
 /// <summary>
-/// Project management tools — lets the AI explicitly load/reload a .sln or
-/// .csproj, or check what's currently loaded. Normally the host auto-discovers
+/// Project management tools — lets the AI explicitly load/reload a .sln,
+/// .slnx or .csproj, or check what's currently loaded. Normally the host auto-discovers
 /// the project, but these give the AI control when needed (e.g. switching
 /// between solutions, forcing a reload after package changes).
 /// </summary>
 [McpServerToolType]
 public static class ProjectManagementTools
 {
-    // ── roslyn_load_project ──────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_load_project")]
+    // ── roslyn_csharp_load_project ──────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_load_project")]
     [Description(
-        "Load a .sln or .csproj so all subsequent queries get full semantic analysis " +
+        "C# solutions/projects only. Load a .sln, .slnx or .csproj so all subsequent queries get full semantic analysis " +
         "(NuGet references, cross-project navigation, real type resolution). By default " +
-        "the server auto-discovers the nearest .sln/.csproj from any .cs file, so you " +
+        "the server auto-discovers the nearest .sln/.slnx/.csproj from any .cs file, so you " +
         "usually don't need this. Use it when: (a) you want to switch to a different " +
         "project, or (b) you added a new NuGet package and need a full reload.")]
     public static async Task<string> LoadProject(
         IWorkspaceHost host,
-        [Description("Path to a .sln or .csproj file")] string path,
+        [Description("Path to a .sln, .slnx or .csproj file")] string path,
         CancellationToken ct = default)
     {
         var abs = Path.GetFullPath(path);
@@ -36,8 +36,10 @@ public static class ProjectManagementTools
             return $"Error: file not found: {abs}";
 
         var ext = Path.GetExtension(abs);
-        if (ext != ".sln" && ext != ".csproj")
-            return $"Error: expected .sln or .csproj, got: {abs}";
+        if (!ext.Equals(".sln", StringComparison.OrdinalIgnoreCase) &&
+            !ext.Equals(".slnx", StringComparison.OrdinalIgnoreCase) &&
+            !ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            return $"Error: expected .sln, .slnx or .csproj, got: {abs}";
 
         try
         {
@@ -59,16 +61,22 @@ public static class ProjectManagementTools
 
             return sb.ToString().TrimEnd();
         }
+        catch (OperationCanceledException)
+        {
+            return $"Error: timed out while loading '{abs}'. The solution may be too large. " +
+                   "Try loading a single .csproj instead, or check for circular references.";
+        }
         catch (Exception ex)
         {
-            return $"Error loading project: {ex.Message}";
+            return $"Error loading project: {ex.Message}. " +
+                   "Ensure the path points to a valid .sln, .slnx or .csproj and MSBuild is installed.";
         }
     }
 
-    // ── roslyn_workspace_info ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_workspace_info")]
+    // ── roslyn_csharp_workspace_info ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_workspace_info")]
     [Description(
-        "Report the current workspace status: is a project loaded, which projects, " +
+        "C# solutions/projects only. Report the current workspace status: is a project loaded, which projects, " +
         "document/reference counts. Run this first when you need to understand the " +
         "project structure or check if full semantic analysis is active.")]
     public static async Task<string> WorkspaceInfo(
@@ -77,6 +85,16 @@ public static class ProjectManagementTools
     {
         var sb = new StringBuilder();
 
+        // Loading in progress — show progress so the AI knows to wait.
+        if (host.IsLoading)
+        {
+            sb.AppendLine("Status: loading project (Roslyn is parsing — please wait...)");
+            sb.AppendLine($"Loading: {host.LoadedProjectPath ?? "(unknown)"}");
+            sb.AppendLine();
+            sb.AppendLine("Queries will auto-wait until loading completes. No need to retry.");
+            return sb.ToString();
+        }
+
         if (!host.IsProjectLoaded)
         {
             sb.AppendLine("Status: standalone mode (no project loaded)");
@@ -84,7 +102,7 @@ public static class ProjectManagementTools
             sb.AppendLine("Queries on .cs files use adhoc compilation (base BCL refs only).");
             sb.AppendLine("NuGet types and cross-project references won't resolve.");
             sb.AppendLine();
-            sb.AppendLine("To enable full analysis, call roslyn_load_project with a .sln/.csproj,");
+            sb.AppendLine("To enable full analysis, call roslyn_csharp_load_project with a .sln/.slnx/.csproj,");
             sb.AppendLine("or just query a .cs file — the server auto-discovers its project.");
             return sb.ToString();
         }
@@ -109,10 +127,10 @@ public static class ProjectManagementTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_project_references ────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_project_references")]
+    // ── roslyn_csharp_project_references ────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_project_references")]
     [Description(
-        "List project-to-project references and assembly (DLL/NuGet) references " +
+        "C# only. List project-to-project references and assembly (DLL/NuGet) references " +
         "for a project. Give the project name or .csproj path.")]
     public static async Task<string> ProjectReferences(
         IWorkspaceHost host,
@@ -121,7 +139,7 @@ public static class ProjectManagementTools
     {
         var proj = FindProject(host, project);
         if (proj == null)
-            return $"Project '{project}' not found. Call roslyn_load_project first.";
+            return $"Project '{project}' not found. Call roslyn_csharp_load_project first.";
 
         var sb = new StringBuilder();
         sb.AppendLine($"Project references for [{proj.Name}]:");
@@ -145,10 +163,10 @@ public static class ProjectManagementTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_nuget_packages ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_nuget_packages")]
+    // ── roslyn_csharp_nuget_packages ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_nuget_packages")]
     [Description(
-        "List NuGet packages referenced by a project. Give the project name or .csproj path.")]
+        "C# only. List NuGet packages referenced by a project. Give the project name or .csproj path.")]
     public static async Task<string> NuGetPackages(
         IWorkspaceHost host,
         [Description("Project name or .csproj file path")] string project,
@@ -156,7 +174,7 @@ public static class ProjectManagementTools
     {
         var proj = FindProject(host, project);
         if (proj == null)
-            return $"Project '{project}' not found. Call roslyn_load_project first.";
+            return $"Project '{project}' not found. Call roslyn_csharp_load_project first.";
 
         var packages = new List<string>();
 
@@ -185,10 +203,10 @@ public static class ProjectManagementTools
         return sb.ToString().TrimEnd();
     }
 
-    // ── roslyn_project_status ────────────────────────────────────────────────
-    [McpServerTool(Name = "roslyn_project_status")]
+    // ── roslyn_csharp_project_status ────────────────────────────────────────
+    [McpServerTool(Name = "roslyn_csharp_project_status")]
     [Description(
-        "Get the overall compilation status of a project: error count, warning " +
+        "C# only. Get the overall compilation status of a project: error count, warning " +
         "count, and the first few errors. Use for 'is the project healthy' checks.")]
     public static async Task<string> ProjectStatus(
         IWorkspaceHost host,
@@ -197,7 +215,7 @@ public static class ProjectManagementTools
     {
         var proj = FindProject(host, project);
         if (proj == null)
-            return $"Project '{project}' not found. Call roslyn_load_project first.";
+            return $"Project '{project}' not found. Call roslyn_csharp_load_project first.";
 
         var compilation = await proj.GetCompilationAsync(ct);
         if (compilation == null)

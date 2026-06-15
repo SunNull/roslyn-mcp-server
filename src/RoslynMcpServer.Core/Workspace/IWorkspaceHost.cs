@@ -21,6 +21,15 @@ public interface IWorkspaceHost
     /// <summary>True when a project/solution is loaded and ready for queries.</summary>
     bool IsProjectLoaded { get; }
 
+    /// <summary>True while a project load is in progress (Roslyn parsing).</summary>
+    bool IsLoading { get; }
+
+    /// <summary>
+    /// If a load is in progress, waits for it to complete. Query methods call
+    /// this before checking the solution so they see the loaded state.
+    /// </summary>
+    Task WaitForLoadAsync(CancellationToken ct = default);
+
     /// <summary>
     /// Returns a compilation for the given path. Auto-resolves: if the path is
     /// a .cs file inside a loaded project, returns that project's compilation
@@ -41,19 +50,19 @@ public interface IWorkspaceHost
     IReadOnlyList<Project> GetProjects();
 
     /// <summary>
-    /// Returns the path of the currently loaded .sln/.csproj, or null if none.
+    /// Returns the path of the currently loaded .sln/.slnx/.csproj, or null if none.
     /// Used by the watcher to know what to reload.
     /// </summary>
     string? LoadedProjectPath { get; }
 
     /// <summary>
     /// automatically on first project query, or explicitly by the AI via the
-    /// roslyn_load_project tool. Subsequent calls reload.
+    /// roslyn_csharp_load_project tool. Subsequent calls reload.
     /// </summary>
     Task LoadProjectAsync(string projectPath, CancellationToken ct = default);
 
     /// <summary>
-    /// Auto-discovers and loads a .sln/.csproj by searching upward from a .cs
+    /// Auto-discovers and loads a .sln/.slnx/.csproj by searching upward from a .cs
     /// file's directory (like git finding .git). Returns true if a project was
     /// found and loaded.
     /// </summary>
