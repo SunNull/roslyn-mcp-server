@@ -213,6 +213,30 @@ public sealed class UnifiedWorkspaceHost : IWorkspaceHost, IDisposable
                 throw new ArgumentException($"Expected .sln, .slnx or .csproj, got: {abs}");
             }
 
+            // Strip unresolved analyzer references — they cause SymbolFinder to throw
+            // on large solutions that reference analyzer NuGet packages.
+            try
+            {
+                var currentSolution = _solution!;
+                var changed = false;
+                foreach (var project in currentSolution.Projects.ToList())
+                {
+                    var badRefs = project.AnalyzerReferences
+                        .Where(a => string.IsNullOrEmpty(a.FullPath) || !File.Exists(a.FullPath))
+                        .ToList();
+                    if (badRefs.Count > 0)
+                    {
+                        currentSolution = currentSolution.WithProjectAnalyzerReferences(
+                            project.Id,
+                            project.AnalyzerReferences.Except(badRefs).ToList());
+                        changed = true;
+                    }
+                }
+                if (changed)
+                    _solution = currentSolution;
+            }
+            catch { /* best-effort cleanup */ }
+
             _loadedProjectPath = abs;
         }
         finally
@@ -489,6 +513,10 @@ public sealed class UnifiedWorkspaceHost : IWorkspaceHost, IDisposable
         return MSBuildWorkspace.Create(new Dictionary<string, string>
         {
             ["AlwaysCompileContentFiles"] = "true",
+            // Skip loading analyzer assemblies — they can cause UnresolvedAnalyzerReference
+            // errors during SymbolFinder operations on large solutions. Analyzers are not
+            // needed for code intelligence (diagnostics/hover/references).
+            ["RunAnalyzers"] = "false",
         });
     }
 

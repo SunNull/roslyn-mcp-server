@@ -139,26 +139,56 @@ public static class SemanticTools
         if (sym == null)
             return $"No symbol found at '{file}:{line}'.";
 
-        var references = await SymbolFinder.FindReferencesAsync(sym, doc.Project.Solution, ct);
-
-        var sb = new StringBuilder();
-        var total = 0;
-        foreach (var refLoc in references.SelectMany(r => r.Locations))
+        // Find references across the entire solution. For large solutions this
+        // can be slow, so we add a timeout and result cap.
+        List<(string file, int line, string snippet)> refList = new();
+        try
         {
-            var loc = refLoc.Location;
-            if (!loc.IsInSource)
-                continue;
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            var lineSpan = loc.GetLineSpan();
-            var refFile = loc.SourceTree?.FilePath ?? "?";
-            var refLine = lineSpan.StartLinePosition.Line + 1;
-            var snippet = PositionMapper.ReadLine(refFile, refLine);
+            // Workaround: analyzer references are stripped in LoadProjectAsync.
 
-            sb.AppendLine($"  {Path.GetFileName(refFile)}:{refLine}  {snippet}");
-            total++;
+            var references = await SymbolFinder.FindReferencesAsync(sym, doc.Project.Solution, timeoutCts.Token);
+
+            const int MaxResults = 200;
+            foreach (var refLoc in references.SelectMany(r => r.Locations))
+            {
+                if (refList.Count >= MaxResults)
+                    break;
+
+                var loc = refLoc.Location;
+                if (!loc.IsInSource)
+                    continue;
+
+                var lineSpan = loc.GetLineSpan();
+                var refFile = loc.SourceTree?.FilePath ?? "?";
+                var refLine = lineSpan.StartLinePosition.Line + 1;
+                var snippet = PositionMapper.ReadLine(refFile, refLine);
+
+                refList.Add((Path.GetFileName(refFile), refLine, snippet));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (refList.Count == 0)
+                return $"Error: find_references timed out (solution may be too large). " +
+                       "Try narrowing the scope or loading a single .csproj.";
+            // Partial results — append a note.
+        }
+        catch (Exception ex)
+        {
+            return $"Error finding references: {ex.Message}";
         }
 
-        sb.Insert(0, $"Found {total} reference{(total == 1 ? "" : "s")} to '{sym.Name}':\n");
+        var sb = new StringBuilder();
+        sb.AppendLine($"Found {refList.Count} reference{(refList.Count == 1 ? "" : "s")} to '{sym.Name}':");
+        foreach (var (f, l, s) in refList)
+            sb.AppendLine($"  {f}:{l}  {s}");
+
+        if (refList.Count >= 200)
+            sb.AppendLine("  ... (showing first 200, more exist)");
+
         return sb.ToString().TrimEnd();
     }
 

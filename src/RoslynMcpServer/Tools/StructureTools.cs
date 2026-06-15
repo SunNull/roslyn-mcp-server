@@ -176,7 +176,22 @@ public static class StructureTools
         if (sym == null)
             return $"No symbol found for '{symbol}'.";
 
-        var implementations = (await SymbolFinder.FindImplementationsAsync(sym, solution, cancellationToken: ct)).ToList();
+        List<ISymbol> implementations;
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+            implementations = (await SymbolFinder.FindImplementationsAsync(sym, solution, cancellationToken: timeoutCts.Token)).ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            return $"Error: find_implementations timed out (solution may be too large). " +
+                   "Try narrowing the scope or loading a single .csproj.";
+        }
+        catch (Exception ex)
+        {
+            return $"Error finding implementations: {ex.Message}";
+        }
 
         if (implementations.Count == 0)
             return $"No implementations found for '{sym.Name}'.";
@@ -238,10 +253,26 @@ public static class StructureTools
         if (sym == null)
             return $"No symbol found for '{symbol}'.";
 
-        // Compute the rename without applying it.
+        // Compute the rename without applying it. Add timeout for large solutions.
+        Solution newSolution;
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 #pragma warning disable CS0618
-        var newSolution = await Renamer.RenameSymbolAsync(solution, sym, new_name, (Microsoft.CodeAnalysis.Options.OptionSet?)null, ct);
+            newSolution = await Renamer.RenameSymbolAsync(solution, sym, new_name, (Microsoft.CodeAnalysis.Options.OptionSet?)null, timeoutCts.Token);
 #pragma warning restore CS0618
+        }
+        catch (OperationCanceledException)
+        {
+            return $"Error: preview_rename timed out (solution may be too large). " +
+                   "Try narrowing the scope or loading a single .csproj.";
+        }
+        catch (Exception ex)
+        {
+            return $"Error previewing rename: {ex.Message}";
+        }
+
         // Compare old vs new solution to count affected documents.
         var changedDocIds = new List<DocumentId>();
         foreach (var projectChange in newSolution.GetChanges(solution).GetProjectChanges())
