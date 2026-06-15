@@ -1,0 +1,63 @@
+name: Publish to NuGet
+
+# Trusted Publishing: pushes the dotnet tool package to nuget.org
+# without an API key. Requires a Trusted Publishing policy configured
+# on nuget.org pointing to this repo + this workflow file.
+#
+# Setup: https://www.nuget.org/account/trusted-publishing
+#   Repository Owner: SunNull
+#   Repository: roslyn-mcp-server
+#   Workflow File: publish-nuget.yml
+
+on:
+  push:
+    tags:
+      - 'nuget-v*'   # e.g. nuget-v0.1.0
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.1.0)'
+        required: true
+
+permissions:
+  id-token: write    # Required for Trusted Publishing (OIDC token)
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Strip 'nuget-v' prefix from tag
+            VERSION="${GITHUB_REF#refs/tags/nuget-v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Publishing version: $VERSION"
+
+      - name: Pack
+        run: |
+          dotnet pack src/RoslynMcpServer/RoslynMcpServer.csproj \
+            -c Release \
+            -p:PackageVersion=${{ steps.version.outputs.version }} \
+            -o ./artifacts
+
+      - name: Publish to NuGet.org (Trusted Publishing)
+        run: |
+          dotnet nuget push ./artifacts/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: List published package
+        run: ls -la ./artifacts/*.nupkg
