@@ -10,7 +10,7 @@
     <NoWarn>NU1903;RS1024</NoWarn>
     <RootNamespace>RoslynMcpServer</RootNamespace>
     <AssemblyName>roslyn-mcp-server</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
 
     <!-- Pack as a global tool: 'dotnet tool install -g roslyn-mcp-server' -->
     <IsPackable>true</IsPackable>
